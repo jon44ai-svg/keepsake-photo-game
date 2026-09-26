@@ -1,6 +1,6 @@
 import { StatusBar } from "expo-status-bar"
 import * as MediaLibrary from "expo-media-library"
-import { Audio } from "expo-av"
+import { AudioContext } from "react-native-audio-api"
 import DateTimePicker from "@react-native-community/datetimepicker"
 import * as Haptics from "expo-haptics"
 import { useEffect, useRef, useState } from "react"
@@ -25,12 +25,6 @@ import { calendarDaysApart, dateFromGuess, nextPhoto, scoreRound, type Photo as 
 import { defaultSettings, storage, type Settings } from "./src/storage"
 import { themes } from "./src/audio"
 import { detectFaces } from "./src/faceDetection"
-
-const themeAssets = {
-  "piano-dawn": require("./assets/themes/piano-dawn.wav"),
-  "guitar-road": require("./assets/themes/guitar-road.wav"),
-  "piano-memory": require("./assets/themes/piano-memory.wav"),
-} as const
 
 type Photo = DomainPhoto
 type Guess = { date: string; place: string }
@@ -123,13 +117,35 @@ export default function App() {
   }, [photo, photoOpacity])
 
   useEffect(() => {
-    let sound: Audio.Sound | null = null
+    let context: AudioContext | null = null
+    let timer: ReturnType<typeof setInterval> | null = null
     if (!settings.music) return
-    Audio.Sound.createAsync(themeAssets[settings.musicTheme], { isLooping: true, volume: settings.volume }).then(({ sound: created }) => {
-      sound = created
-      return created.playAsync()
-    }).catch(() => {})
-    return () => { sound?.unloadAsync().catch(() => {}) }
+    try {
+      context = new AudioContext()
+      const theme = themes.find((item) => item.id === settings.musicTheme) ?? themes[0]
+      const playTheme = () => {
+        const start = context?.currentTime ?? 0
+        theme.notes.forEach((note, index) => {
+          if (!context) return
+          const oscillator = context.createOscillator()
+          const gain = context.createGain()
+          oscillator.frequency.value = 440 * Math.pow(2, (note - 69) / 12)
+          gain.gain.value = settings.volume * 0.08
+          oscillator.connect(gain)
+          gain.connect(context.destination)
+          oscillator.start(start + index * 0.18)
+          oscillator.stop(start + index * 0.18 + 0.5)
+        })
+      }
+      playTheme()
+      timer = setInterval(playTheme, 3000)
+    } catch {
+      context = null
+    }
+    return () => {
+      if (timer) clearInterval(timer)
+      context?.close().catch(() => {})
+    }
   }, [settings.music, settings.musicTheme, settings.volume])
 
   function beginSetup() {
