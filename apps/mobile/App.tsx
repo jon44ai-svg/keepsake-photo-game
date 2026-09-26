@@ -125,7 +125,8 @@ export default function App() {
       const theme = themes.find((item) => item.id === settings.musicTheme) ?? themes[0]
       const playTheme = () => {
         const start = context?.currentTime ?? 0
-        theme.notes.forEach((note, index) => {
+        const notes = theme.intervals.map((interval) => theme.tonic + interval + theme.relative)
+        notes.forEach((note, index) => {
           if (!context) return
           const oscillator = context.createOscillator()
           const gain = context.createGain()
