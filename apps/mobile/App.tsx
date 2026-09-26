@@ -1,5 +1,6 @@
 import { StatusBar } from "expo-status-bar"
 import * as MediaLibrary from "expo-media-library"
+import { Audio } from "expo-av"
 import DateTimePicker from "@react-native-community/datetimepicker"
 import * as Haptics from "expo-haptics"
 import FaceDetection from "@react-native-ml-kit/face-detection"
@@ -24,6 +25,12 @@ import { dateFromExif } from "./src/domain/date"
 import { dateFromGuess, nextPhoto, scoreRound, type Photo as DomainPhoto, type Round } from "./src/domain/game"
 import { defaultSettings, storage, type Settings } from "./src/storage"
 import { themes } from "./src/audio"
+
+const themeAssets = {
+  "piano-dawn": require("./assets/themes/piano-dawn.wav"),
+  "guitar-road": require("./assets/themes/guitar-road.wav"),
+  "piano-memory": require("./assets/themes/piano-memory.wav"),
+} as const
 
 type Photo = DomainPhoto
 type Guess = { date: string; place: string }
@@ -114,6 +121,16 @@ export default function App() {
     photoOpacity.setValue(0.2)
     Animated.spring(photoOpacity, { toValue: 1, useNativeDriver: true }).start()
   }, [photo, photoOpacity])
+
+  useEffect(() => {
+    let sound: Audio.Sound | null = null
+    if (!settings.music) return
+    Audio.Sound.createAsync(themeAssets[settings.musicTheme], { isLooping: true, volume: settings.volume }).then(({ sound: created }) => {
+      sound = created
+      return created.playAsync()
+    }).catch(() => {})
+    return () => { sound?.unloadAsync().catch(() => {}) }
+  }, [settings.music, settings.musicTheme, settings.volume])
 
   function beginSetup() {
     setPlayers(["", ""])
@@ -318,6 +335,7 @@ export default function App() {
             {(["system", "light", "dark"] as const).map((theme) => <Pressable key={theme} onPress={() => setSettings({ ...settings, theme })} style={styles.settingRow}><Text style={styles.resultName}>{theme[0].toUpperCase() + theme.slice(1)}</Text><Text style={styles.addText}>{settings.theme === theme ? "Selected" : ""}</Text></Pressable>)}
             <Text style={styles.sectionLabel}>PLAYBACK</Text>
             <Pressable onPress={() => setSettings({ ...settings, music: !settings.music })} style={styles.settingRow}><Text style={styles.resultName}>Music</Text><Text style={styles.addText}>{settings.music ? "On" : "Off"}</Text></Pressable>
+            <View style={styles.settingRow}><Text style={styles.resultName}>Volume {Math.round(settings.volume * 100)}%</Text><View style={styles.volumeControls}><Pressable accessibilityLabel="Lower volume" onPress={() => setSettings({ ...settings, volume: Math.max(0, settings.volume - 0.1) })}><Text style={styles.addText}>−</Text></Pressable><Pressable accessibilityLabel="Raise volume" onPress={() => setSettings({ ...settings, volume: Math.min(1, settings.volume + 0.1) })}><Text style={styles.addText}>＋</Text></Pressable></View></View>
             {themes.map((theme) => <Pressable key={theme.id} onPress={() => setSettings({ ...settings, musicTheme: theme.id })} style={styles.settingRow}><Text style={styles.resultName}>{theme.label}</Text><Text style={styles.addText}>{settings.musicTheme === theme.id ? "Selected" : ""}</Text></Pressable>)}
             <Pressable onPress={() => setSettings({ ...settings, vibration: !settings.vibration })} style={styles.settingRow}><Text style={styles.resultName}>Vibration</Text><Text style={styles.addText}>{settings.vibration ? "On" : "Off"}</Text></Pressable>
             <Pressable onPress={() => setSettings({ ...settings, facesOnly: !settings.facesOnly })} style={styles.settingRow}><Text style={styles.resultName}>Only photos with faces</Text><Text style={styles.addText}>{settings.facesOnly ? "On" : "Off"}</Text></Pressable>
@@ -464,6 +482,7 @@ const styles = StyleSheet.create({
   settingsCard: { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.line, borderRadius: 15, padding: 16, marginBottom: 18 },
   settingRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 13, borderBottomWidth: 1, borderColor: colors.line },
   photoActions: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", minHeight: 34 },
+  volumeControls: { flexDirection: "row", gap: 18 },
   photoFrame: { height: 300, overflow: "hidden", borderRadius: 17, backgroundColor: "#e4e5de", marginVertical: 8, position: "relative" },
   photo: { width: "100%", height: "100%" },
   photoTag: { position: "absolute", left: 12, bottom: 12, backgroundColor: "rgba(30,43,37,0.82)", borderRadius: 7, paddingVertical: 7, paddingHorizontal: 9 },

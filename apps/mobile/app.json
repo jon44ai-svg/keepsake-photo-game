@@ -7,7 +7,7 @@
       "android"
     ],
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "android": {
       "package": "com.keepsake.photogame",
       "permissions": [
