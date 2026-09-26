@@ -1,0 +1,7 @@
+# Keepsake Club working agreements
+
+- Treat this as an Android-first local-only prototype with roughly 100 hours of investment.
+- Prefer the smallest working change and reuse existing adapters and storage.
+- Record accepted, rejected, and deferred product decisions in `docs/decisions.md`.
+- Keep photo metadata on-device and never add cloud upload without an explicit decision.
+- Use pnpm for JavaScript package operations.

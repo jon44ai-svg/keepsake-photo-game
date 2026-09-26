@@ -10,6 +10,7 @@ export type Settings = {
   theme: "light" | "dark" | "system"
   volume: number
   music: boolean
+  musicTheme: "piano-dawn" | "guitar-road" | "piano-memory"
   vibration: boolean
   facesOnly: boolean
 }
@@ -18,6 +19,7 @@ export const defaultSettings: Settings = {
   theme: "system",
   volume: 0.7,
   music: true,
+  musicTheme: "piano-dawn",
   vibration: true,
   facesOnly: false,
 }

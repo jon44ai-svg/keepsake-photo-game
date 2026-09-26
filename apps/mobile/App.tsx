@@ -1,6 +1,8 @@
 import { StatusBar } from "expo-status-bar"
-import AsyncStorage from "@react-native-async-storage/async-storage"
 import * as MediaLibrary from "expo-media-library"
+import DateTimePicker from "@react-native-community/datetimepicker"
+import * as Haptics from "expo-haptics"
+import FaceDetection from "@react-native-ml-kit/face-detection"
 import { useEffect, useState } from "react"
 import {
   ActivityIndicator,
@@ -16,37 +18,18 @@ import {
   View,
 } from "react-native"
 import { PermissionsAndroid } from "react-native"
+import { dateFromExif } from "./src/domain/date"
+import { dateFromGuess, nextPhoto, scoreRound, type Photo as DomainPhoto, type Round } from "./src/domain/game"
+import { defaultSettings, storage, type Settings } from "./src/storage"
+import { themes } from "./src/audio"
 
-type Photo = { uri: string; date: Date; latitude: number; longitude: number }
+type Photo = DomainPhoto
 type Guess = { date: string; place: string }
 type Player = { name: string; guess: Guess }
 type Screen = "home" | "players" | "guess" | "reveal"
 type SelectedAlbum = Pick<MediaLibrary.Album, "id" | "title">
 
 const colors = { ink: "#1e2b25", muted: "#718078", green: "#315e49", paper: "#f5f3ec", white: "#fffefa", line: "#dce1d8", orange: "#d27b50" }
-
-function dateFromExif(value: unknown): Date | null {
-  if (typeof value !== "string") return null
-  const match = value.match(/^(\d{4})[:\-](\d{2})[:\-](\d{2})(?:[ T](\d{2}):(\d{2}):(\d{2}))?/)
-  if (!match) return null
-  const [, year, month, day, hour = "0", minute = "0", second = "0"] = match
-  const date = new Date(+year, +month - 1, +day, +hour, +minute, +second)
-  return Number.isNaN(date.getTime()) ? null : date
-}
-
-function dateFromGuess(value: string): Date | null {
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (!match) return null
-  const [, year, month, day] = match
-  const date = new Date(+year, +month - 1, +day)
-  return date.getFullYear() === +year && date.getMonth() === +month - 1 && date.getDate() === +day ? date : null
-}
-
-function calendarDaysApart(first: Date, second: Date) {
-  const firstDay = Date.UTC(first.getFullYear(), first.getMonth(), first.getDate())
-  const secondDay = Date.UTC(second.getFullYear(), second.getMonth(), second.getDate())
-  return Math.abs(firstDay - secondDay) / 86_400_000
-}
 
 function coordinates(latitude: number, longitude: number) {
   return `${Math.abs(latitude).toFixed(3)}° ${latitude < 0 ? "S" : "N"}, ${Math.abs(longitude).toFixed(3)}° ${longitude < 0 ? "W" : "E"}`
@@ -77,6 +60,10 @@ export default function App() {
   const [loadingAlbums, setLoadingAlbums] = useState(false)
   const [albumLoaded, setAlbumLoaded] = useState(false)
   const [photo, setPhoto] = useState<Photo | null>(null)
+  const [roundPhotos, setRoundPhotos] = useState<Photo[]>([])
+  const [settings, setSettings] = useState<Settings>(defaultSettings)
+  const [showDatePicker, setShowDatePicker] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [turn, setTurn] = useState(0)
   const [dateGuess, setDateGuess] = useState("")
   const [placeGuess, setPlaceGuess] = useState("")
@@ -88,14 +75,21 @@ export default function App() {
   const [round, setRound] = useState(1)
 
   useEffect(() => {
-    AsyncStorage.getItem("photo-album").then((value) => {
-      if (!value) return
-      const saved: unknown = JSON.parse(value)
-      if (saved && typeof saved === "object" && "id" in saved && "title" in saved && typeof saved.id === "string" && typeof saved.title === "string") {
-        setSelectedAlbum({ id: saved.id, title: saved.title })
-      }
+    Promise.all([storage.loadAlbum<SelectedAlbum>(), storage.loadSettings()]).then(([saved, savedSettings]) => {
+      if (saved) setSelectedAlbum(saved)
+      setSettings(savedSettings)
     }).catch(() => {}).finally(() => setAlbumLoaded(true))
   }, [])
+
+  useEffect(() => {
+    if (!albumLoaded) return
+    storage.saveSettings(settings).catch(() => {})
+  }, [settings, albumLoaded])
+
+  useEffect(() => {
+    if (!photo || !roundPhotos.length) return
+    storage.saveGame({ round, players, scores, roundPhotos, photoIndex: roundPhotos.findIndex((item) => item.id === photo.id) }).catch(() => {})
+  }, [photo, roundPhotos, round, players, scores])
 
   function beginSetup() {
     setPlayers(["", ""])
@@ -137,7 +131,7 @@ export default function App() {
   async function chooseAlbum(album: MediaLibrary.Album) {
     const choice = { id: album.id, title: album.title }
     try {
-      await AsyncStorage.setItem("photo-album", JSON.stringify(choice))
+      await storage.saveAlbum(choice)
       setSelectedAlbum(choice)
       setShowAlbumPicker(false)
       setMessage("")
@@ -206,7 +200,10 @@ export default function App() {
             const location = info.location
             if (date) datedPhotos++
             if (location) locatedPhotos++
-            if (date && location && info.uri) return { uri: info.uri, date, latitude: location.latitude, longitude: location.longitude }
+            if (date && location && info.uri) {
+              const faces = await FaceDetection.detect(info.uri)
+              return { id: asset.id, uri: info.uri, date, latitude: location.latitude, longitude: location.longitude, hasFace: faces.length > 0 }
+            }
           } catch {
             metadataErrors++
           }
@@ -223,7 +220,14 @@ export default function App() {
         setMessage(`No playable photos in "${cameraAlbum.title}": ${assets.length} scanned, ${datedPhotos} with a date, ${locatedPhotos} with GPS${metadataErrors ? `, ${metadataErrors} metadata reads failed` : ""}.`)
         return
       }
-      setPhoto(candidates[Math.floor(Math.random() * candidates.length)])
+      const playable = settings.facesOnly ? candidates.filter((candidate) => candidate.hasFace) : candidates
+      if (!playable.length) {
+        setMessage("No photos with detected faces were found. Turn off the face-only filter or choose another album.")
+        return
+      }
+      const selected = playable.sort(() => Math.random() - 0.5).slice(0, Math.min(5, playable.length))
+      setRoundPhotos(selected)
+      setPhoto(selected[0])
       setPlayers(names)
       setResults([])
       setPlaceWinners([])
@@ -280,7 +284,21 @@ export default function App() {
             <LogoMark />
             <Text style={styles.brand}>KEEPSAKE CLUB</Text>
             <Text style={styles.round}>ROUND {String(round).padStart(2, "0")}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Open settings" onPress={() => setShowSettings(true)}><Text style={styles.settingsIcon}>⚙</Text></Pressable>
           </View>
+
+          {showSettings ? <View style={styles.settingsCard}>
+            <Text style={styles.eyebrow}>YOUR KEEPSAKE</Text>
+            <Text style={styles.sectionLabel}>APPEARANCE</Text>
+            {(["system", "light", "dark"] as const).map((theme) => <Pressable key={theme} onPress={() => setSettings({ ...settings, theme })} style={styles.settingRow}><Text style={styles.resultName}>{theme[0].toUpperCase() + theme.slice(1)}</Text><Text style={styles.addText}>{settings.theme === theme ? "Selected" : ""}</Text></Pressable>)}
+            <Text style={styles.sectionLabel}>PLAYBACK</Text>
+            <Pressable onPress={() => setSettings({ ...settings, music: !settings.music })} style={styles.settingRow}><Text style={styles.resultName}>Music</Text><Text style={styles.addText}>{settings.music ? "On" : "Off"}</Text></Pressable>
+            {themes.map((theme) => <Pressable key={theme.id} onPress={() => setSettings({ ...settings, musicTheme: theme.id })} style={styles.settingRow}><Text style={styles.resultName}>{theme.label}</Text><Text style={styles.addText}>{settings.musicTheme === theme.id ? "Selected" : ""}</Text></Pressable>)}
+            <Pressable onPress={() => setSettings({ ...settings, vibration: !settings.vibration })} style={styles.settingRow}><Text style={styles.resultName}>Vibration</Text><Text style={styles.addText}>{settings.vibration ? "On" : "Off"}</Text></Pressable>
+            <Pressable onPress={() => setSettings({ ...settings, facesOnly: !settings.facesOnly })} style={styles.settingRow}><Text style={styles.resultName}>Only photos with faces</Text><Text style={styles.addText}>{settings.facesOnly ? "On" : "Off"}</Text></Pressable>
+            <Pressable onPress={() => storage.clearAll().then(() => { setSelectedAlbum(null); setSettings(defaultSettings); setMessage("Saved data cleared.") })} style={styles.settingRow}><Text style={styles.error}>Clear saved data</Text></Pressable>
+            <Pressable onPress={() => setShowSettings(false)} style={styles.back}><Text style={styles.backText}>Close settings</Text></Pressable>
+          </View> : null}
 
           {screen === "home" && <>
             <View style={styles.heroCopy}>
@@ -320,8 +338,10 @@ export default function App() {
             <Text style={styles.title}>{players[turn]}</Text>
             <Text style={styles.body}>Everyone else, look away. Your answer stays hidden until the reveal.</Text>
             <View style={styles.photoFrame}><Image source={{ uri: photo.uri }} style={styles.photo} resizeMode="cover" /><View style={styles.photoTag}><Text style={styles.photoTagText}>A MEMORY, UNDATED</Text></View></View>
+            {roundPhotos.length > 1 ? <View style={styles.photoActions}><Text style={styles.turnCount}>IMAGE {roundPhotos.findIndex((item) => item.id === photo.id) + 1} OF {roundPhotos.length}</Text><Pressable accessibilityRole="button" onPress={() => { const next = nextPhoto({ photos: roundPhotos, photoIndex: roundPhotos.findIndex((item) => item.id === photo.id), turn, results, placeWinners }); setPhoto(next.photos[next.photoIndex]); if (settings.vibration) Haptics.selectionAsync() }}><Text style={styles.addText}>Reroll image</Text></Pressable></View> : null}
             <Text style={styles.fieldLabel}>WHEN WAS THIS TAKEN?</Text>
-            <TextInput accessibilityLabel="Guess the date in year-month-day format" value={dateGuess} onChangeText={setDateGuess} placeholder="YYYY-MM-DD" placeholderTextColor="#9aa39c" style={styles.answerInput} />
+            <Pressable accessibilityRole="button" accessibilityLabel="Choose guessed date" onPress={() => setShowDatePicker(true)} style={styles.answerInput}><Text style={{ color: dateGuess ? colors.ink : "#9aa39c", fontSize: 14 }}>{dateGuess || "Choose a date"}</Text></Pressable>
+            {showDatePicker ? <DateTimePicker value={dateFromGuess(dateGuess) ?? new Date()} mode="date" onChange={(_, value) => { setShowDatePicker(false); if (value) setDateGuess(value.toISOString().slice(0, 10)) }} /> : null}
             {dateGuess.length > 0 && !dateFromGuess(dateGuess) ? <Text style={styles.dateHint}>Enter a valid date as YYYY-MM-DD.</Text> : null}
             <Text style={styles.fieldLabel}>WHERE WERE WE?</Text>
             <TextInput value={placeGuess} onChangeText={setPlaceGuess} placeholder="Your best guess" placeholderTextColor="#9aa39c" style={styles.answerInput} />
@@ -372,6 +392,7 @@ const styles = StyleSheet.create({
   logoHillFront: { position: "absolute", width: 12, height: 7, right: -1, bottom: 0, borderTopLeftRadius: 8, backgroundColor: colors.green, transform: [{ rotate: "8deg" }] },
   brand: { fontSize: 11, letterSpacing: 1.7, fontWeight: "700", color: colors.ink },
   round: { marginLeft: "auto", fontSize: 9, letterSpacing: 1.2, color: colors.muted, fontWeight: "700" },
+  settingsIcon: { color: colors.green, fontSize: 18, marginLeft: 12 },
   heroCopy: { marginBottom: 24 },
   eyebrow: { color: colors.green, fontSize: 10, letterSpacing: 1.8, fontWeight: "700", marginBottom: 11 },
   title: { color: colors.ink, fontSize: 39, lineHeight: 43, letterSpacing: -1.3, fontFamily: "Georgia", marginBottom: 12 },
@@ -414,6 +435,9 @@ const styles = StyleSheet.create({
   spinner: { marginTop: 14 },
   back: { alignItems: "center", padding: 17 },
   backText: { color: colors.muted, fontSize: 12, fontWeight: "600" },
+  settingsCard: { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.line, borderRadius: 15, padding: 16, marginBottom: 18 },
+  settingRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 13, borderBottomWidth: 1, borderColor: colors.line },
+  photoActions: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", minHeight: 34 },
   photoFrame: { height: 300, overflow: "hidden", borderRadius: 17, backgroundColor: "#e4e5de", marginVertical: 8, position: "relative" },
   photo: { width: "100%", height: "100%" },
   photoTag: { position: "absolute", left: 12, bottom: 12, backgroundColor: "rgba(30,43,37,0.82)", borderRadius: 7, paddingVertical: 7, paddingHorizontal: 9 },
