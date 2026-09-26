@@ -5,6 +5,11 @@ allowBuilds:
   esbuild: true
   msw: false
 
+packageExtensions:
+  react-native-worklets@0.7.0:
+    dependencies:
+      "@babel/types": "^7.29.8"
+
 overrides:
   postcss: ">=8.5.18"
   browserslist: ">=4.28.7"
