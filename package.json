@@ -9,7 +9,7 @@
     "count-lines": "node count-lines.mjs",
     "docs": "pnpm --filter docs dev",
     "docs:build": "pnpm --filter docs build",
-    "storybook": "pnpm --filter mobile storybook",
+    "storybook": "pnpm --filter mobile storybook:mobile",
     "storybook:web": "pnpm --filter mobile storybook:web",
     "storybook:android": "pnpm --filter mobile storybook:android"
   },
