@@ -4,6 +4,7 @@ const keys = {
   album: "keepsake.album",
   game: "keepsake.game",
   settings: "keepsake.settings",
+  photoIndex: "keepsake.photo-index",
 } as const
 
 export type Settings = {
@@ -38,6 +39,8 @@ export const storage = {
   saveSettings: (settings: Settings) => AsyncStorage.setItem(keys.settings, JSON.stringify(settings)),
   loadGame: <T>() => read<T | null>(keys.game, null),
   saveGame: (game: unknown) => AsyncStorage.setItem(keys.game, JSON.stringify(game)),
+  loadPhotoIndex: <T>() => read<T | null>(keys.photoIndex, null),
+  savePhotoIndex: (photos: unknown) => AsyncStorage.setItem(keys.photoIndex, JSON.stringify(photos)),
   clearGame: () => AsyncStorage.removeItem(keys.game),
   saveAlbum: (album: unknown) => AsyncStorage.setItem(keys.album, JSON.stringify(album)),
   loadAlbum: <T>() => read<T | null>(keys.album, null),

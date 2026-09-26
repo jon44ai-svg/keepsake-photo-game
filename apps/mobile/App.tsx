@@ -3,9 +3,10 @@ import * as MediaLibrary from "expo-media-library"
 import DateTimePicker from "@react-native-community/datetimepicker"
 import * as Haptics from "expo-haptics"
 import FaceDetection from "@react-native-ml-kit/face-detection"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   ActivityIndicator,
+  Animated,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -15,6 +16,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useColorScheme,
   View,
 } from "react-native"
 import { PermissionsAndroid } from "react-native"
@@ -64,6 +66,9 @@ export default function App() {
   const [settings, setSettings] = useState<Settings>(defaultSettings)
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const photoOpacity = useRef(new Animated.Value(1)).current
+  const systemScheme = useColorScheme()
+  const darkMode = settings.theme === "dark" || (settings.theme === "system" && systemScheme === "dark")
   const [turn, setTurn] = useState(0)
   const [dateGuess, setDateGuess] = useState("")
   const [placeGuess, setPlaceGuess] = useState("")
@@ -87,9 +92,28 @@ export default function App() {
   }, [settings, albumLoaded])
 
   useEffect(() => {
+    if (!albumLoaded) return
+    storage.loadGame<{ round: number; players: string[]; scores: Record<string, number>; roundPhotos: Array<Omit<Photo, "date"> & { date: string }>; photoIndex: number }>().then((saved) => {
+      if (!saved || !saved.roundPhotos?.length) return
+      const restored = saved.roundPhotos.map((item) => ({ ...item, date: new Date(item.date) }))
+      setRound(saved.round)
+      setPlayers(saved.players)
+      setScores(saved.scores)
+      setRoundPhotos(restored)
+      setPhoto(restored[saved.photoIndex] ?? restored[0])
+      setScreen("guess")
+    }).catch(() => {})
+  }, [albumLoaded])
+
+  useEffect(() => {
     if (!photo || !roundPhotos.length) return
     storage.saveGame({ round, players, scores, roundPhotos, photoIndex: roundPhotos.findIndex((item) => item.id === photo.id) }).catch(() => {})
   }, [photo, roundPhotos, round, players, scores])
+
+  useEffect(() => {
+    photoOpacity.setValue(0.2)
+    Animated.spring(photoOpacity, { toValue: 1, useNativeDriver: true }).start()
+  }, [photo, photoOpacity])
 
   function beginSetup() {
     setPlayers(["", ""])
@@ -220,6 +244,7 @@ export default function App() {
         setMessage(`No playable photos in "${cameraAlbum.title}": ${assets.length} scanned, ${datedPhotos} with a date, ${locatedPhotos} with GPS${metadataErrors ? `, ${metadataErrors} metadata reads failed` : ""}.`)
         return
       }
+      await storage.savePhotoIndex(candidates)
       const playable = settings.facesOnly ? candidates.filter((candidate) => candidate.hasFace) : candidates
       if (!playable.length) {
         setMessage("No photos with detected faces were found. Turn off the face-only filter or choose another album.")
@@ -276,8 +301,8 @@ export default function App() {
   })) : Number.POSITIVE_INFINITY
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar style="dark" />
+    <SafeAreaView style={[styles.safe, darkMode && styles.safeDark]}>
+      <StatusBar style={darkMode ? "light" : "dark"} />
       <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
           <View style={styles.topline}>
@@ -337,7 +362,7 @@ export default function App() {
             <Text style={styles.eyebrow}>PASS THE PHONE TO</Text>
             <Text style={styles.title}>{players[turn]}</Text>
             <Text style={styles.body}>Everyone else, look away. Your answer stays hidden until the reveal.</Text>
-            <View style={styles.photoFrame}><Image source={{ uri: photo.uri }} style={styles.photo} resizeMode="cover" /><View style={styles.photoTag}><Text style={styles.photoTagText}>A MEMORY, UNDATED</Text></View></View>
+            <Animated.View style={[styles.photoFrame, { opacity: photoOpacity }]}><Image source={{ uri: photo.uri }} style={styles.photo} resizeMode="cover" /><View style={styles.photoTag}><Text style={styles.photoTagText}>A MEMORY, UNDATED</Text></View></Animated.View>
             {roundPhotos.length > 1 ? <View style={styles.photoActions}><Text style={styles.turnCount}>IMAGE {roundPhotos.findIndex((item) => item.id === photo.id) + 1} OF {roundPhotos.length}</Text><Pressable accessibilityRole="button" onPress={() => { const next = nextPhoto({ photos: roundPhotos, photoIndex: roundPhotos.findIndex((item) => item.id === photo.id), turn, results, placeWinners }); setPhoto(next.photos[next.photoIndex]); if (settings.vibration) Haptics.selectionAsync() }}><Text style={styles.addText}>Reroll image</Text></Pressable></View> : null}
             <Text style={styles.fieldLabel}>WHEN WAS THIS TAKEN?</Text>
             <Pressable accessibilityRole="button" accessibilityLabel="Choose guessed date" onPress={() => setShowDatePicker(true)} style={styles.answerInput}><Text style={{ color: dateGuess ? colors.ink : "#9aa39c", fontSize: 14 }}>{dateGuess || "Choose a date"}</Text></Pressable>
@@ -382,6 +407,7 @@ export default function App() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.paper },
+  safeDark: { backgroundColor: "#18221d" },
   fill: { flex: 1 },
   page: { width: "100%", maxWidth: 560, alignSelf: "center", paddingHorizontal: 25, paddingTop: 12, paddingBottom: 40 },
   topline: { height: 52, flexDirection: "row", alignItems: "center", marginBottom: 37 },
