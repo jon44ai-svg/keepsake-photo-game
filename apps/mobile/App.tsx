@@ -1,6 +1,7 @@
 import { StatusBar } from "expo-status-bar"
+import AsyncStorage from "@react-native-async-storage/async-storage"
 import * as MediaLibrary from "expo-media-library"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   ActivityIndicator,
   Image,
@@ -20,6 +21,7 @@ type Photo = { uri: string; date: Date; latitude: number; longitude: number }
 type Guess = { date: string; place: string }
 type Player = { name: string; guess: Guess }
 type Screen = "home" | "players" | "guess" | "reveal"
+type SelectedAlbum = Pick<MediaLibrary.Album, "id" | "title">
 
 const colors = { ink: "#1e2b25", muted: "#718078", green: "#315e49", paper: "#f5f3ec", white: "#fffefa", line: "#dce1d8", orange: "#d27b50" }
 
@@ -69,6 +71,11 @@ function LogoMark() {
 export default function App() {
   const [screen, setScreen] = useState<Screen>("home")
   const [players, setPlayers] = useState(["", ""])
+  const [selectedAlbum, setSelectedAlbum] = useState<SelectedAlbum | null>(null)
+  const [photoAlbums, setPhotoAlbums] = useState<MediaLibrary.Album[]>([])
+  const [showAlbumPicker, setShowAlbumPicker] = useState(false)
+  const [loadingAlbums, setLoadingAlbums] = useState(false)
+  const [albumLoaded, setAlbumLoaded] = useState(false)
   const [photo, setPhoto] = useState<Photo | null>(null)
   const [turn, setTurn] = useState(0)
   const [dateGuess, setDateGuess] = useState("")
@@ -80,12 +87,63 @@ export default function App() {
   const [message, setMessage] = useState("")
   const [round, setRound] = useState(1)
 
+  useEffect(() => {
+    AsyncStorage.getItem("photo-album").then((value) => {
+      if (!value) return
+      const saved: unknown = JSON.parse(value)
+      if (saved && typeof saved === "object" && "id" in saved && "title" in saved && typeof saved.id === "string" && typeof saved.title === "string") {
+        setSelectedAlbum({ id: saved.id, title: saved.title })
+      }
+    }).catch(() => {}).finally(() => setAlbumLoaded(true))
+  }, [])
+
   function beginSetup() {
     setPlayers(["", ""])
     setScores({})
     setRound(1)
     setMessage("")
     setScreen("players")
+  }
+
+  async function getPhotoAlbums() {
+    const permission = await MediaLibrary.requestPermissionsAsync(false, ["photo"])
+    if (!permission.granted) {
+      setMessage("Photo access is needed to choose an album.")
+      return null
+    }
+    if (permission.accessPrivileges && permission.accessPrivileges !== "all") {
+      setMessage("Please allow access to all photos to choose an album.")
+      return null
+    }
+    return MediaLibrary.getAlbumsAsync({ includeSmartAlbums: true })
+  }
+
+  async function openAlbumPicker() {
+    setLoadingAlbums(true)
+    setMessage("")
+    try {
+      const albums = await getPhotoAlbums()
+      if (albums) {
+        setPhotoAlbums(albums.filter((album) => album.assetCount > 0))
+        setShowAlbumPicker(true)
+      }
+    } catch {
+      setMessage("We couldn't read your photo albums. Check access in Android Settings and try again.")
+    } finally {
+      setLoadingAlbums(false)
+    }
+  }
+
+  async function chooseAlbum(album: MediaLibrary.Album) {
+    const choice = { id: album.id, title: album.title }
+    try {
+      await AsyncStorage.setItem("photo-album", JSON.stringify(choice))
+      setSelectedAlbum(choice)
+      setShowAlbumPicker(false)
+      setMessage("")
+    } catch {
+      setMessage("We couldn't save that album on this device. Try again.")
+    }
   }
 
   async function startRound() {
@@ -101,15 +159,6 @@ export default function App() {
     setBusy(true)
     setMessage("")
     try {
-      const permission = await MediaLibrary.requestPermissionsAsync(false, ["photo"])
-      if (!permission.granted) {
-        setMessage("Photo access is needed to find pictures with a date and location.")
-        return
-      }
-      if (permission.accessPrivileges && permission.accessPrivileges !== "all") {
-        setMessage("Please allow access to all photos so the game can pick from your Camera album.")
-        return
-      }
       if (Platform.OS === "android" && Number(Platform.Version) >= 29) {
         const locationPermission = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION)
         if (locationPermission !== PermissionsAndroid.RESULTS.GRANTED) {
@@ -117,10 +166,23 @@ export default function App() {
           return
         }
       }
-      const albums = await MediaLibrary.getAlbumsAsync({ includeSmartAlbums: true })
-      const cameraAlbum = albums.find((album) => /camera|dcim/i.test(album.title))
+      const albums = await getPhotoAlbums()
+      if (!albums) return
+      const defaultAlbum = albums.find((album) => album.title.trim().toLowerCase() === "camera")
+        ?? albums.find((album) => album.title.trim().toLowerCase() === "dcim")
+        ?? albums.find((album) => /^camera(?:\b|[_ -])/i.test(album.title))
+        ?? albums.find((album) => /dcim/i.test(album.title))
+      const cameraAlbum = selectedAlbum ? albums.find((album) => album.id === selectedAlbum.id) : defaultAlbum
+      if (selectedAlbum && !cameraAlbum) {
+        setPhotoAlbums(albums.filter((album) => album.assetCount > 0))
+        setShowAlbumPicker(true)
+        setMessage("Your saved album is no longer available. Choose another photo album.")
+        return
+      }
       if (!cameraAlbum) {
-        setMessage("We couldn't find a Camera album in your photo library.")
+        setPhotoAlbums(albums.filter((album) => album.assetCount > 0))
+        setShowAlbumPicker(true)
+        setMessage("Choose a photo album to play.")
         return
       }
       const assets: MediaLibrary.Asset[] = []
@@ -133,6 +195,7 @@ export default function App() {
       const candidates: Photo[] = []
       let datedPhotos = 0
       let locatedPhotos = 0
+      let metadataErrors = 0
       for (let offset = 0; offset < assets.length; offset += 40) {
         const batch = await Promise.all(assets.slice(offset, offset + 40).map(async (asset) => {
           try {
@@ -145,7 +208,7 @@ export default function App() {
             if (location) locatedPhotos++
             if (date && location && info.uri) return { uri: info.uri, date, latitude: location.latitude, longitude: location.longitude }
           } catch {
-            // Ignore photos whose metadata cannot be read from the device.
+            metadataErrors++
           }
           return null
         }))
@@ -153,11 +216,11 @@ export default function App() {
         setMessage(`Checking camera photos… ${Math.min(offset + 40, assets.length)} of ${assets.length}`)
       }
       if (!assets.length) {
-        setMessage("Your Camera album is empty.")
+        setMessage(`Your "${cameraAlbum.title}" album is empty.`)
         return
       }
       if (!candidates.length) {
-        setMessage(`No playable photos among ${assets.length} Camera photos: ${datedPhotos} have a date and ${locatedPhotos} have GPS. Camera location tagging may be off.`)
+        setMessage(`No playable photos in "${cameraAlbum.title}": ${assets.length} scanned, ${datedPhotos} with a date, ${locatedPhotos} with GPS${metadataErrors ? `, ${metadataErrors} metadata reads failed` : ""}.`)
         return
       }
       setPhoto(candidates[Math.floor(Math.random() * candidates.length)])
@@ -241,9 +304,13 @@ export default function App() {
             <Text style={styles.body}>Add everyone playing. Pass the phone when it&apos;s their turn to guess.</Text>
             <View style={styles.playerList}>{players.map((name, index) => <View style={styles.playerInputRow} key={index}><Text style={styles.playerIndex}>{String(index + 1).padStart(2, "0")}</Text><TextInput accessibilityLabel={`Player ${index + 1} name`} value={name} onChangeText={(value) => setPlayers(players.map((item, i) => i === index ? value : item))} placeholder="Player name" placeholderTextColor="#9aa39c" style={styles.input} returnKeyType="next" /></View>)}</View>
             <Pressable style={styles.addPlayer} onPress={() => setPlayers([...players, ""])}><Text style={styles.addText}>＋  Add another player</Text></Pressable>
+            <View style={styles.albumBox}>
+              <View style={styles.albumHeading}><View><Text style={styles.miniLabel}>PHOTO ALBUM</Text><Text style={styles.albumName}>{selectedAlbum?.title ?? "Camera (default)"}</Text></View><Pressable accessibilityRole="button" onPress={openAlbumPicker} disabled={loadingAlbums || !albumLoaded}><Text style={styles.addText}>{loadingAlbums ? "Loading…" : "Change"}</Text></Pressable></View>
+              {showAlbumPicker ? photoAlbums.map((album) => <Pressable accessibilityRole="button" key={album.id} onPress={() => chooseAlbum(album)} style={styles.albumOption}><Text style={styles.albumOptionName}>{album.title}</Text><Text style={styles.albumCount}>{album.assetCount} items {selectedAlbum?.id === album.id ? "· Selected" : ""}</Text></Pressable>) : null}
+            </View>
             <View style={styles.permissionNote}><Text style={styles.noteIcon}>✳</Text><Text style={styles.noteText}>Keepsake scans photos on this phone and only uses pictures that have both a date and location. Nothing is uploaded.</Text></View>
             {message ? <Text style={styles.error}>{message}</Text> : null}
-            <Button title={busy ? "Finding your photos…" : "Find a photo  →"} onPress={startRound} disabled={busy} />
+            <Button title={!albumLoaded ? "Loading saved folder…" : busy ? "Finding your photos…" : "Find a photo  →"} onPress={startRound} disabled={busy || !albumLoaded} />
             {busy ? <ActivityIndicator color={colors.green} style={styles.spinner} /> : null}
             <Pressable onPress={() => setScreen("home")} style={styles.back}><Text style={styles.backText}>Go back</Text></Pressable>
           </>}
@@ -334,6 +401,12 @@ const styles = StyleSheet.create({
   input: { height: 55, flex: 1, fontSize: 16, color: colors.ink },
   addPlayer: { paddingVertical: 17 },
   addText: { color: colors.green, fontWeight: "700", fontSize: 13 },
+  albumBox: { backgroundColor: colors.white, borderRadius: 13, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: colors.line, marginBottom: 12 },
+  albumHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  albumName: { color: colors.ink, fontSize: 13, fontWeight: "600" },
+  albumOption: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, borderTopWidth: 1, borderColor: colors.line },
+  albumOptionName: { color: colors.ink, fontSize: 12, flex: 1 },
+  albumCount: { color: colors.muted, fontSize: 10, marginLeft: 8 },
   permissionNote: { flexDirection: "row", padding: 14, backgroundColor: "#e9ede5", borderRadius: 13, marginTop: 9, marginBottom: 15 },
   noteIcon: { color: colors.green, fontSize: 15, marginRight: 10, marginTop: 1 },
   noteText: { flex: 1, color: colors.muted, fontSize: 11, lineHeight: 17 },
