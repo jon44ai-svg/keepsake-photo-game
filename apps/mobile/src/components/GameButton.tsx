@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text } from "react-native"
+import { colors } from "./theme"
 
 export function GameButton({ title, onPress, disabled = false }: { title: string; onPress: () => void; disabled?: boolean }) {
   return (
@@ -9,7 +10,7 @@ export function GameButton({ title, onPress, disabled = false }: { title: string
 }
 
 const styles = StyleSheet.create({
-  button: { minHeight: 52, borderRadius: 14, backgroundColor: "#315e49", alignItems: "center", justifyContent: "center", paddingHorizontal: 18 },
+  button: { backgroundColor: colors.green, minHeight: 55, borderRadius: 14, alignItems: "center", justifyContent: "center", marginTop: 12, paddingHorizontal: 18 },
   disabled: { opacity: 0.45 },
-  text: { color: "#fff", fontSize: 14, fontWeight: "700" },
+  text: { color: "white", fontSize: 14, fontWeight: "700", letterSpacing: 0.25 },
 })

@@ -3,57 +3,28 @@ import * as MediaLibrary from "expo-media-library"
 import DateTimePicker from "@react-native-community/datetimepicker"
 import * as Haptics from "expo-haptics"
 import { useEffect, useRef, useState } from "react"
-import {
-  ActivityIndicator,
-  Animated,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  useColorScheme,
-  View,
-} from "react-native"
+import { Animated, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, useColorScheme } from "react-native"
 import { PermissionsAndroid } from "react-native"
 import { dateFromExif } from "./src/domain/date"
 import { sortAlbums as sortAlbumList } from "./src/domain/albums"
-import { calendarDaysApart, dateFromGuess, nextPhoto, scoreRound, type Photo as DomainPhoto, type Round } from "./src/domain/game"
+import { calendarDaysApart, dateFromGuess, nextPhoto, type Photo as DomainPhoto } from "./src/domain/game"
 import { defaultSettings, storage, type Settings } from "./src/storage"
 import { themes } from "./src/audio"
 import { setSoundtrackVolume, startSoundtrack, stopSoundtrack } from "./src/soundtrack/play"
 import { detectFaces } from "./src/faceDetection"
+import { BrandHeader } from "./src/components/BrandHeader"
+import { GuessScreen } from "./src/components/GuessScreen"
+import { HomeScreen } from "./src/components/HomeScreen"
+import { PlayersScreen } from "./src/components/PlayersScreen"
+import { RevealScreen } from "./src/components/RevealScreen"
+import { SettingsPanel } from "./src/components/SettingsPanel"
+import { styles } from "./src/components/styles"
 
 type Photo = DomainPhoto
 type Guess = { date: string; place: string }
 type Player = { name: string; guess: Guess }
 type Screen = "home" | "players" | "guess" | "reveal"
 type SelectedAlbum = Pick<MediaLibrary.Album, "id" | "title">
-
-const colors = { ink: "#1e2b25", muted: "#718078", green: "#315e49", paper: "#f5f3ec", white: "#fffefa", line: "#dce1d8", orange: "#d27b50" }
-
-function coordinates(latitude: number, longitude: number) {
-  return `${Math.abs(latitude).toFixed(3)}° ${latitude < 0 ? "S" : "N"}, ${Math.abs(longitude).toFixed(3)}° ${longitude < 0 ? "W" : "E"}`
-}
-
-function Button({ title, onPress, disabled = false }: { title: string; onPress: () => void; disabled?: boolean }) {
-  return <Pressable accessibilityRole="button" onPress={onPress} disabled={disabled} style={[styles.button, disabled && styles.buttonDisabled]}><Text style={styles.buttonText}>{title}</Text></Pressable>
-}
-
-function LogoMark() {
-  return (
-    <View accessible accessibilityLabel="Keepsake Club logo" style={styles.logoMark}>
-      <View style={styles.logoPhoto}>
-        <View style={styles.logoSun} />
-        <View style={styles.logoHillBack} />
-        <View style={styles.logoHillFront} />
-      </View>
-    </View>
-  )
-}
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>("home")
@@ -86,12 +57,15 @@ export default function App() {
   const [round, setRound] = useState(1)
 
   useEffect(() => {
-    Promise.all([storage.loadAlbum<SelectedAlbum>(), storage.loadSettings(), storage.loadAlbumPreferences()]).then(([saved, savedSettings, albumPreferences]) => {
-      if (saved) setSelectedAlbum(saved)
-      setSettings(savedSettings)
-      setFavoriteAlbumIds(albumPreferences.favoriteIds)
-      setBlacklistedAlbumIds(albumPreferences.blacklistedIds)
-    }).catch(() => {}).finally(() => setAlbumLoaded(true))
+    Promise.all([storage.loadAlbum<SelectedAlbum>(), storage.loadSettings(), storage.loadAlbumPreferences()])
+      .then(([saved, savedSettings, albumPreferences]) => {
+        if (saved) setSelectedAlbum(saved)
+        setSettings(savedSettings)
+        setFavoriteAlbumIds(albumPreferences.favoriteIds)
+        setBlacklistedAlbumIds(albumPreferences.blacklistedIds)
+      })
+      .catch(() => {})
+      .finally(() => setAlbumLoaded(true))
   }, [])
 
   useEffect(() => {
@@ -106,16 +80,19 @@ export default function App() {
 
   useEffect(() => {
     if (!albumLoaded) return
-    storage.loadGame<{ round: number; players: string[]; scores: Record<string, number>; roundPhotos: Array<Omit<Photo, "date"> & { date: string }>; photoIndex: number }>().then((saved) => {
-      if (!saved || !saved.roundPhotos?.length) return
-      const restored = saved.roundPhotos.map((item) => ({ ...item, date: new Date(item.date) }))
-      setRound(saved.round)
-      setPlayers(saved.players)
-      setScores(saved.scores)
-      setRoundPhotos(restored)
-      setPhoto(restored[saved.photoIndex] ?? restored[0])
-      setScreen("guess")
-    }).catch(() => {})
+    storage
+      .loadGame<{ round: number; players: string[]; scores: Record<string, number>; roundPhotos: Array<Omit<Photo, "date"> & { date: string }>; photoIndex: number }>()
+      .then((saved) => {
+        if (!saved || !saved.roundPhotos?.length) return
+        const restored = saved.roundPhotos.map((item) => ({ ...item, date: new Date(item.date) }))
+        setRound(saved.round)
+        setPlayers(saved.players)
+        setScores(saved.scores)
+        setRoundPhotos(restored)
+        setPhoto(restored[saved.photoIndex] ?? restored[0])
+        setScreen("guess")
+      })
+      .catch(() => {})
   }, [albumLoaded])
 
   useEffect(() => {
@@ -180,7 +157,7 @@ export default function App() {
     }
   }
 
-  function toggleFavoriteAlbum(album: MediaLibrary.Album) {
+  function toggleFavoriteAlbum(album: { id: string }) {
     setFavoriteAlbumIds((ids) => {
       const next = ids.includes(album.id) ? ids.filter((id) => id !== album.id) : [...ids, album.id]
       setPhotoAlbums((albums) => sortAlbums(albums, next))
@@ -188,7 +165,7 @@ export default function App() {
     })
   }
 
-  function toggleBlacklistedAlbum(album: MediaLibrary.Album) {
+  function toggleBlacklistedAlbum(album: { id: string }) {
     setBlacklistedAlbumIds((ids) => {
       const next = ids.includes(album.id) ? ids.filter((id) => id !== album.id) : [...ids, album.id]
       setPhotoAlbums((albums) => sortAlbums(albums, favoriteAlbumIds, next))
@@ -200,15 +177,22 @@ export default function App() {
     }
   }
 
-  function restoreAlbum(album: MediaLibrary.Album) {
+  function restoreAlbum(album: { id: string; title: string; assetCount: number }) {
+    const full = allPhotoAlbums.find((item) => item.id === album.id)
     setBlacklistedAlbumIds((ids) => {
       const next = ids.filter((id) => id !== album.id)
-      setPhotoAlbums((albums) => albums.some((item) => item.id === album.id) ? sortAlbums(albums, favoriteAlbumIds, next) : sortAlbums([...albums, album], favoriteAlbumIds, next))
+      setPhotoAlbums((albums) =>
+        albums.some((item) => item.id === album.id)
+          ? sortAlbums(albums, favoriteAlbumIds, next)
+          : full
+            ? sortAlbums([...albums, full], favoriteAlbumIds, next)
+            : sortAlbums(albums, favoriteAlbumIds, next),
+      )
       return next
     })
   }
 
-  async function chooseAlbum(album: MediaLibrary.Album) {
+  async function chooseAlbum(album: { id: string; title: string }) {
     const choice = { id: album.id, title: album.title }
     try {
       await storage.saveAlbum(choice)
@@ -243,10 +227,11 @@ export default function App() {
       const albums = await getPhotoAlbums()
       if (!albums) return
       const availableAlbums = albums.filter((album) => !blacklistedAlbumIds.includes(album.id))
-      const defaultAlbum = availableAlbums.find((album) => album.title.trim().toLowerCase() === "camera")
-        ?? availableAlbums.find((album) => album.title.trim().toLowerCase() === "dcim")
-        ?? availableAlbums.find((album) => /^camera(?:\b|[_ -])/i.test(album.title))
-        ?? availableAlbums.find((album) => /dcim/i.test(album.title))
+      const defaultAlbum =
+        availableAlbums.find((album) => album.title.trim().toLowerCase() === "camera") ??
+        availableAlbums.find((album) => album.title.trim().toLowerCase() === "dcim") ??
+        availableAlbums.find((album) => /^camera(?:\b|[_ -])/i.test(album.title)) ??
+        availableAlbums.find((album) => /dcim/i.test(album.title))
       const cameraAlbum = selectedAlbum ? albums.find((album) => album.id === selectedAlbum.id) : defaultAlbum
       if (cameraAlbum && blacklistedAlbumIds.includes(cameraAlbum.id)) {
         setSelectedAlbum(null)
@@ -275,34 +260,47 @@ export default function App() {
         setMessage(`Using ${candidates.length} cached playable photos.`)
       } else {
         const assets: MediaLibrary.Asset[] = []
-        let page = await MediaLibrary.getAssetsAsync({ album: cameraAlbum, mediaType: [MediaLibrary.MediaType.photo], first: 500, sortBy: [[MediaLibrary.SortBy.creationTime, false]] })
+        let page = await MediaLibrary.getAssetsAsync({
+          album: cameraAlbum,
+          mediaType: [MediaLibrary.MediaType.photo],
+          first: 500,
+          sortBy: [[MediaLibrary.SortBy.creationTime, false]],
+        })
         assets.push(...page.assets)
         while (page.hasNextPage) {
-          page = await MediaLibrary.getAssetsAsync({ album: cameraAlbum, mediaType: [MediaLibrary.MediaType.photo], first: 500, after: page.endCursor, sortBy: [[MediaLibrary.SortBy.creationTime, false]] })
+          page = await MediaLibrary.getAssetsAsync({
+            album: cameraAlbum,
+            mediaType: [MediaLibrary.MediaType.photo],
+            first: 500,
+            after: page.endCursor,
+            sortBy: [[MediaLibrary.SortBy.creationTime, false]],
+          })
           assets.push(...page.assets)
         }
         let datedPhotos = 0
         let locatedPhotos = 0
         let metadataErrors = 0
         for (let offset = 0; offset < assets.length; offset += 40) {
-          const batch = await Promise.all(assets.slice(offset, offset + 40).map(async (asset) => {
-            try {
-              const info = await MediaLibrary.getAssetInfoAsync(asset, { shouldDownloadFromNetwork: false })
-              const exif = (info.exif ?? {}) as Record<string, unknown>
-              const exifDate = dateFromExif(exif.DateTimeOriginal ?? exif.DateTimeDigitized ?? exif.DateTime)
-              const date = exifDate ?? (asset.creationTime > 0 ? new Date(asset.creationTime) : null)
-              const location = info.location
-              if (date) datedPhotos++
-              if (location) locatedPhotos++
-              if (date && location && info.uri) {
-                const faces = await detectFaces(info.uri)
-                return { id: asset.id, uri: info.uri, date, latitude: location.latitude, longitude: location.longitude, hasFace: faces > 0 }
+          const batch = await Promise.all(
+            assets.slice(offset, offset + 40).map(async (asset) => {
+              try {
+                const info = await MediaLibrary.getAssetInfoAsync(asset, { shouldDownloadFromNetwork: false })
+                const exif = (info.exif ?? {}) as Record<string, unknown>
+                const exifDate = dateFromExif(exif.DateTimeOriginal ?? exif.DateTimeDigitized ?? exif.DateTime)
+                const date = exifDate ?? (asset.creationTime > 0 ? new Date(asset.creationTime) : null)
+                const location = info.location
+                if (date) datedPhotos++
+                if (location) locatedPhotos++
+                if (date && location && info.uri) {
+                  const faces = await detectFaces(info.uri)
+                  return { id: asset.id, uri: info.uri, date, latitude: location.latitude, longitude: location.longitude, hasFace: faces > 0 }
+                }
+              } catch {
+                metadataErrors++
               }
-            } catch {
-              metadataErrors++
-            }
-            return null
-          }))
+              return null
+            }),
+          )
           candidates.push(...batch.filter((candidate): candidate is Photo => candidate !== null))
           setMessage(`Checking camera photos… ${Math.min(offset + 40, assets.length)} of ${assets.length}`)
         }
@@ -312,7 +310,9 @@ export default function App() {
         }
         await storage.savePhotoIndex({ albumId: cameraAlbum.id, assetCount: cameraAlbum.assetCount, photos: candidates })
         if (!candidates.length) {
-          setMessage(`No playable photos in "${cameraAlbum.title}": ${assets.length} scanned, ${datedPhotos} with a date, ${locatedPhotos} with GPS${metadataErrors ? `, ${metadataErrors} metadata reads failed` : ""}.`)
+          setMessage(
+            `No playable photos in "${cameraAlbum.title}": ${assets.length} scanned, ${datedPhotos} with a date, ${locatedPhotos} with GPS${metadataErrors ? `, ${metadataErrors} metadata reads failed` : ""}.`,
+          )
           return
         }
       }
@@ -353,7 +353,7 @@ export default function App() {
   }
 
   function togglePlacePoint(name: string) {
-    setPlaceWinners((winners) => winners.includes(name) ? winners.filter((winner) => winner !== name) : [...winners, name])
+    setPlaceWinners((winners) => (winners.includes(name) ? winners.filter((winner) => winner !== name) : [...winners, name]))
   }
 
   function finishRound() {
@@ -370,216 +370,132 @@ export default function App() {
   }
 
   const dateLabel = photo?.date.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })
-  const nearestDays = photo ? Math.min(...results.map(({ guess }) => {
-    const guessedDate = dateFromGuess(guess.date)
-    return guessedDate ? calendarDaysApart(guessedDate, photo.date) : Number.POSITIVE_INFINITY
-  })) : Number.POSITIVE_INFINITY
+  const nearestDays = photo
+    ? Math.min(
+        ...results.map(({ guess }) => {
+          const guessedDate = dateFromGuess(guess.date)
+          return guessedDate ? calendarDaysApart(guessedDate, photo.date) : Number.POSITIVE_INFINITY
+        }),
+      )
+    : Number.POSITIVE_INFINITY
+
+  const pickerAlbums = (
+    showBlacklistedAlbums ? allPhotoAlbums.filter((album) => blacklistedAlbumIds.includes(album.id)) : photoAlbums
+  ).map((album) => ({ id: album.id, title: album.title, assetCount: album.assetCount }))
 
   return (
     <SafeAreaView style={[styles.safe, darkMode && styles.safeDark]}>
       <StatusBar style={darkMode ? "light" : "dark"} />
       <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
-          <View style={styles.topline}>
-            <LogoMark />
-            <Text style={styles.brand}>KEEPSAKE CLUB</Text>
-            <Text style={styles.round}>ROUND {String(round).padStart(2, "0")}</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="Open settings" onPress={() => setShowSettings(true)}><Text style={styles.settingsIcon}>⚙</Text></Pressable>
-          </View>
+          <BrandHeader round={round} onOpenSettings={() => setShowSettings(true)} />
 
-          {showSettings ? <View style={styles.settingsCard}>
-            <Text style={styles.eyebrow}>YOUR KEEPSAKE</Text>
-            <Text style={styles.sectionLabel}>APPEARANCE</Text>
-            {(["system", "light", "dark"] as const).map((theme) => <Pressable key={theme} onPress={() => setSettings({ ...settings, theme })} style={styles.settingRow}><Text style={styles.resultName}>{theme[0].toUpperCase() + theme.slice(1)}</Text><Text style={styles.addText}>{settings.theme === theme ? "Selected" : ""}</Text></Pressable>)}
-            <Text style={styles.sectionLabel}>PLAYBACK</Text>
-            <Pressable onPress={() => setSettings({ ...settings, music: !settings.music })} style={styles.settingRow}><Text style={styles.resultName}>Music</Text><Text style={styles.addText}>{settings.music ? "On" : "Off"}</Text></Pressable>
-            <View style={styles.settingRow}><Text style={styles.resultName}>Volume {Math.round(settings.volume * 100)}%</Text><View style={styles.volumeControls}><Pressable accessibilityLabel="Lower volume" onPress={() => setSettings({ ...settings, volume: Math.max(0, settings.volume - 0.1) })}><Text style={styles.addText}>−</Text></Pressable><Pressable accessibilityLabel="Raise volume" onPress={() => setSettings({ ...settings, volume: Math.min(1, settings.volume + 0.1) })}><Text style={styles.addText}>＋</Text></Pressable></View></View>
-            {themes.map((theme) => <Pressable key={theme.id} onPress={() => setSettings({ ...settings, musicTheme: theme.id })} style={styles.settingRow}><Text style={styles.resultName}>{theme.label}</Text><Text style={styles.addText}>{settings.musicTheme === theme.id ? "Selected" : ""}</Text></Pressable>)}
-            <Pressable onPress={() => setSettings({ ...settings, vibration: !settings.vibration })} style={styles.settingRow}><Text style={styles.resultName}>Vibration</Text><Text style={styles.addText}>{settings.vibration ? "On" : "Off"}</Text></Pressable>
-            <Pressable onPress={() => setSettings({ ...settings, facesOnly: !settings.facesOnly })} style={styles.settingRow}><Text style={styles.resultName}>Only photos with faces</Text><Text style={styles.addText}>{settings.facesOnly ? "On" : "Off"}</Text></Pressable>
-            <Pressable onPress={() => storage.clearAll().then(() => { setSelectedAlbum(null); setSettings(defaultSettings); setMessage("Saved data cleared.") })} style={styles.settingRow}><Text style={styles.error}>Clear saved data</Text></Pressable>
-            <Pressable onPress={() => setShowSettings(false)} style={styles.back}><Text style={styles.backText}>Close settings</Text></Pressable>
-          </View> : null}
+          {showSettings ? (
+            <SettingsPanel
+              settings={settings}
+              themes={[...themes]}
+              onChange={setSettings}
+              onClearData={() =>
+                storage.clearAll().then(() => {
+                  setSelectedAlbum(null)
+                  setSettings(defaultSettings)
+                  setMessage("Saved data cleared.")
+                })
+              }
+              onClose={() => setShowSettings(false)}
+            />
+          ) : null}
 
-          {screen === "home" && <>
-            <View style={styles.heroCopy}>
-              <Text style={styles.eyebrow}>A LITTLE TIME TRAVEL</Text>
-              <Text style={styles.title}>How well do you{`\n`}remember?</Text>
-              <Text style={styles.body}>A photo from your camera roll. A table full of stories. Take turns guessing when and where it happened.</Text>
-            </View>
-            <View style={styles.previewCard}>
-              <View style={styles.previewImage}><Text style={styles.previewSun}>✳</Text><View style={styles.hillOne} /><View style={styles.hillTwo} /><Text style={styles.previewCaption}>A moment, somewhere</Text></View>
-              <View style={styles.previewDetails}><View><Text style={styles.miniLabel}>WHEN WAS THIS?</Text><Text style={styles.hiddenValue}>••••••••••</Text></View><View style={styles.previewDivider} /><View><Text style={styles.miniLabel}>WHERE WAS THIS?</Text><Text style={styles.hiddenValue}>••••••••</Text></View><View style={styles.lock}><Text style={styles.lockText}>✦</Text></View></View>
-            </View>
-            <View style={styles.featureRow}><Text style={styles.featureNumber}>01</Text><Text style={styles.featureText}>One phone goes around the table. Guesses stay secret until everyone is in.</Text></View>
-            <View style={styles.featureRow}><Text style={styles.featureNumber}>02</Text><Text style={styles.featureText}>Closest date gets a point. The host decides whose place guess is close.</Text></View>
-            <Button title="Start a game  →" onPress={beginSetup} />
-            <Text style={styles.footnote}>PRIVATE BY DESIGN · PHOTOS STAY ON THIS PHONE</Text>
-          </>}
+          {screen === "home" ? <HomeScreen onStart={beginSetup} /> : null}
 
-          {screen === "players" && <>
-            <Text style={styles.eyebrow}>FIRST, GATHER YOUR PEOPLE</Text>
-            <Text style={styles.title}>Who&apos;s around{`\n`}the table?</Text>
-            <Text style={styles.body}>Add everyone playing. Pass the phone when it&apos;s their turn to guess.</Text>
-            <View style={styles.playerList}>{players.map((name, index) => <View style={styles.playerInputRow} key={index}><Text style={styles.playerIndex}>{String(index + 1).padStart(2, "0")}</Text><TextInput accessibilityLabel={`Player ${index + 1} name`} value={name} onChangeText={(value) => setPlayers(players.map((item, i) => i === index ? value : item))} placeholder="Player name" placeholderTextColor="#9aa39c" style={styles.input} returnKeyType="next" /></View>)}</View>
-            <Pressable style={styles.addPlayer} onPress={() => setPlayers([...players, ""])}><Text style={styles.addText}>＋  Add another player</Text></Pressable>
-            <View style={styles.albumBox}>
-              <View style={styles.albumHeading}><View><Text style={styles.miniLabel}>PHOTO ALBUM</Text><Text style={styles.albumName}>{selectedAlbum?.title ?? "Camera (default)"}</Text></View><Pressable accessibilityRole="button" onPress={openAlbumPicker} disabled={loadingAlbums || !albumLoaded}><Text style={styles.addText}>{loadingAlbums ? "Loading…" : "Change"}</Text></Pressable></View>
-              {showAlbumPicker ? <>
-                <View style={styles.albumFilterRow}>
-                  <Text style={styles.albumCount}>{showBlacklistedAlbums ? "BLACKLISTED ALBUMS" : `${photoAlbums.length} AVAILABLE ALBUMS`}</Text>
-                  <Pressable accessibilityRole="button" onPress={() => setShowBlacklistedAlbums(!showBlacklistedAlbums)}><Text style={styles.addText}>{showBlacklistedAlbums ? "Show available" : "View blacklisted"}</Text></Pressable>
-                </View>
-                {(showBlacklistedAlbums ? allPhotoAlbums.filter((album) => blacklistedAlbumIds.includes(album.id)) : photoAlbums).map((album) => <View key={album.id} style={styles.albumOption}>
-                  <Pressable accessibilityRole="button" disabled={showBlacklistedAlbums} onPress={() => chooseAlbum(album)} style={styles.albumSelect}><Text style={styles.albumOptionName}>{album.title}</Text><Text style={styles.albumCount}>{album.assetCount} items {selectedAlbum?.id === album.id ? "· Selected" : ""}</Text></Pressable>
-                  {showBlacklistedAlbums ? <Pressable accessibilityRole="button" accessibilityLabel={`Restore ${album.title}`} onPress={() => restoreAlbum(album)}><Text style={styles.addText}>Restore</Text></Pressable> : <View style={styles.albumActions}><Pressable accessibilityRole="button" accessibilityLabel={`${favoriteAlbumIds.includes(album.id) ? "Unstar" : "Star"} ${album.title}`} onPress={() => toggleFavoriteAlbum(album)}><Text style={styles.starText}>{favoriteAlbumIds.includes(album.id) ? "★" : "☆"}</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel={`Blacklist ${album.title}`} onPress={() => toggleBlacklistedAlbum(album)}><Text style={styles.albumActionText}>Hide</Text></Pressable></View>}
-                </View>)}
-              </> : null}
-            </View>
-            <View style={styles.permissionNote}><Text style={styles.noteIcon}>✳</Text><Text style={styles.noteText}>Keepsake scans photos on this phone and only uses pictures that have both a date and location. Nothing is uploaded.</Text></View>
-            {message ? <Text style={styles.error}>{message}</Text> : null}
-            <Button title={!albumLoaded ? "Loading saved folder…" : busy ? "Finding your photos…" : "Find a photo  →"} onPress={startRound} disabled={busy || !albumLoaded} />
-            {busy ? <ActivityIndicator color={colors.green} style={styles.spinner} /> : null}
-            <Pressable onPress={() => setScreen("home")} style={styles.back}><Text style={styles.backText}>Go back</Text></Pressable>
-          </>}
+          {screen === "players" ? (
+            <PlayersScreen
+              players={players}
+              selectedAlbumTitle={selectedAlbum?.title ?? "Camera (default)"}
+              albumLoaded={albumLoaded}
+              loadingAlbums={loadingAlbums}
+              busy={busy}
+              message={message}
+              showAlbumPicker={showAlbumPicker}
+              showBlacklistedAlbums={showBlacklistedAlbums}
+              albums={pickerAlbums}
+              selectedAlbumId={selectedAlbum?.id ?? null}
+              favoriteAlbumIds={favoriteAlbumIds}
+              onChangePlayer={(index, value) => setPlayers(players.map((item, i) => (i === index ? value : item)))}
+              onAddPlayer={() => setPlayers([...players, ""])}
+              onOpenAlbumPicker={openAlbumPicker}
+              onToggleBlacklistedView={() => setShowBlacklistedAlbums(!showBlacklistedAlbums)}
+              onSelectAlbum={chooseAlbum}
+              onToggleFavorite={toggleFavoriteAlbum}
+              onHideAlbum={toggleBlacklistedAlbum}
+              onRestoreAlbum={restoreAlbum}
+              onStartRound={startRound}
+              onBack={() => setScreen("home")}
+            />
+          ) : null}
 
-          {screen === "guess" && photo && <>
-            <Text style={styles.eyebrow}>PASS THE PHONE TO</Text>
-            <Text style={styles.title}>{players[turn]}</Text>
-            <Text style={styles.body}>Everyone else, look away. Your answer stays hidden until the reveal.</Text>
-            <Animated.View style={[styles.photoFrame, { opacity: photoOpacity }]}><Image source={{ uri: photo.uri }} style={styles.photo} resizeMode="cover" /><View style={styles.photoTag}><Text style={styles.photoTagText}>A MEMORY, UNDATED</Text></View></Animated.View>
-            {roundPhotos.length > 1 ? <View style={styles.photoActions}><Text style={styles.turnCount}>IMAGE {roundPhotos.findIndex((item) => item.id === photo.id) + 1} OF {roundPhotos.length}</Text><Pressable accessibilityRole="button" onPress={() => { const next = nextPhoto({ photos: roundPhotos, photoIndex: roundPhotos.findIndex((item) => item.id === photo.id), turn, results, placeWinners }); setPhoto(next.photos[next.photoIndex]); if (settings.vibration) Haptics.selectionAsync() }}><Text style={styles.addText}>Reroll image</Text></Pressable></View> : null}
-            <Text style={styles.fieldLabel}>WHEN WAS THIS TAKEN?</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="Choose guessed date" onPress={() => setShowDatePicker(true)} style={styles.answerInput}><Text style={{ color: dateGuess ? colors.ink : "#9aa39c", fontSize: 14 }}>{dateGuess || "Choose a date"}</Text></Pressable>
-            {showDatePicker ? <DateTimePicker value={dateFromGuess(dateGuess) ?? new Date()} mode="date" onChange={(_, value) => { setShowDatePicker(false); if (value) setDateGuess(value.toISOString().slice(0, 10)) }} /> : null}
-            {dateGuess.length > 0 && !dateFromGuess(dateGuess) ? <Text style={styles.dateHint}>Enter a valid date as YYYY-MM-DD.</Text> : null}
-            <Text style={styles.fieldLabel}>WHERE WERE WE?</Text>
-            <TextInput value={placeGuess} onChangeText={setPlaceGuess} placeholder="Your best guess" placeholderTextColor="#9aa39c" style={styles.answerInput} />
-            <Text style={styles.turnCount}>GUESS {turn + 1} OF {players.length} · PRIVATE UNTIL REVEAL</Text>
-            <Button title={turn + 1 === players.length ? "Lock in my guess  →" : "Next player  →"} onPress={submitGuess} disabled={!dateFromGuess(dateGuess) || !placeGuess.trim()} />
-          </>}
+          {screen === "guess" && photo ? (
+            <GuessScreen
+              playerName={players[turn]}
+              photo={photo}
+              photoOpacity={photoOpacity}
+              photoIndex={roundPhotos.findIndex((item) => item.id === photo.id)}
+              photoCount={roundPhotos.length}
+              dateGuess={dateGuess}
+              placeGuess={placeGuess}
+              turn={turn}
+              playerCount={players.length}
+              datePicker={
+                showDatePicker ? (
+                  <DateTimePicker
+                    value={dateFromGuess(dateGuess) ?? new Date()}
+                    mode="date"
+                    onChange={(_, value) => {
+                      setShowDatePicker(false)
+                      if (value) setDateGuess(value.toISOString().slice(0, 10))
+                    }}
+                  />
+                ) : null
+              }
+              onOpenDatePicker={() => setShowDatePicker(true)}
+              onPlaceChange={setPlaceGuess}
+              onReroll={() => {
+                const next = nextPhoto({
+                  photos: roundPhotos,
+                  photoIndex: roundPhotos.findIndex((item) => item.id === photo.id),
+                  turn,
+                  results,
+                  placeWinners,
+                })
+                setPhoto(next.photos[next.photoIndex])
+                if (settings.vibration) Haptics.selectionAsync()
+              }}
+              onSubmit={submitGuess}
+            />
+          ) : null}
 
-          {screen === "reveal" && photo && <>
-            <Text style={styles.eyebrow}>THE MOMENT OF TRUTH</Text>
-            <Text style={styles.title}>Remember this?</Text>
-            <View style={styles.photoFrame}><Image source={{ uri: photo.uri }} style={styles.photo} resizeMode="cover" /></View>
-            <View style={styles.answerCard}><Text style={styles.miniLabel}>TAKEN ON</Text><Text style={styles.answerTitle}>{dateLabel}</Text><Text style={styles.miniLabel}>SOMEWHERE AROUND</Text><Text style={styles.answerPlace}>{coordinates(photo.latitude, photo.longitude)}</Text><Text style={styles.hostHint}>Ask the group: whose place guess was closest?</Text></View>
-            <Text style={styles.sectionLabel}>THE GUESSES</Text>
-            {results.map((result) => {
-              const guessedDate = dateFromGuess(result.guess.date)
-              const days = guessedDate ? calendarDaysApart(guessedDate, photo.date) : Number.POSITIVE_INFINITY
-              const datePoint = Number.isFinite(days) && days === nearestDays
-              const placePoint = placeWinners.includes(result.name)
-              return <View style={styles.resultRow} key={result.name}><View style={styles.resultInitial}><Text style={styles.initialText}>{result.name.charAt(0).toUpperCase()}</Text></View><View style={styles.resultInfo}><Text style={styles.resultName}>{result.name}</Text><Text style={styles.resultGuess}>{result.guess.date} · {result.guess.place}</Text><Text style={styles.scoreBreakdown}>Date {datePoint ? "+1" : "—"} · Place {placePoint ? "+1" : "—"}</Text></View><Pressable accessibilityRole="button" accessibilityLabel={`${placePoint ? "Remove" : "Award"} place point for ${result.name}`} onPress={() => togglePlacePoint(result.name)} style={[styles.judgeButton, placePoint && styles.judgeSelected]}><Text style={[styles.judgeText, placePoint && styles.judgeTextSelected]}>{placePoint ? "Place ✓" : "Right place?"}</Text></Pressable></View>
-            })}
-            <Text style={styles.scoreNote}>+1 for the closest date · tap “Right place?” to award the place point</Text>
-            <Text style={styles.sectionLabel}>TOTAL SCORES</Text>
-            {players.map((name) => {
-              const datePoint = results.some((item) => {
-                const guessedDate = dateFromGuess(item.guess.date)
-                return item.name === name && guessedDate !== null && photo !== null && calendarDaysApart(guessedDate, photo.date) === nearestDays
-              })
-              return <View key={name} style={styles.scoreRow}><Text style={styles.resultName}>{name}</Text><Text style={styles.totalScore}>{(scores[name] ?? 0) + Number(datePoint) + Number(placeWinners.includes(name))}</Text></View>
-            })}
-            <Button title="Play another round  →" onPress={finishRound} />
-            <Pressable onPress={() => { finishRound(); setScreen("home") }} style={styles.back}><Text style={styles.backText}>Finish game</Text></Pressable>
-          </>}
+          {screen === "reveal" && photo && dateLabel ? (
+            <RevealScreen
+              photo={photo}
+              dateLabel={dateLabel}
+              results={results.map((result) => {
+                const guessedDate = dateFromGuess(result.guess.date)
+                const days = guessedDate ? calendarDaysApart(guessedDate, photo.date) : Number.POSITIVE_INFINITY
+                return { ...result, datePoint: Number.isFinite(days) && days === nearestDays }
+              })}
+              placeWinners={placeWinners}
+              players={players}
+              scores={scores}
+              onTogglePlace={togglePlacePoint}
+              onNextRound={finishRound}
+              onFinish={() => {
+                finishRound()
+                setScreen("home")
+              }}
+            />
+          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   )
 }
-
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.paper },
-  safeDark: { backgroundColor: "#18221d" },
-  fill: { flex: 1 },
-  page: { width: "100%", maxWidth: 560, alignSelf: "center", paddingHorizontal: 25, paddingTop: 12, paddingBottom: 40 },
-  topline: { height: 52, flexDirection: "row", alignItems: "center", marginBottom: 37 },
-  logoMark: { width: 34, height: 34, borderRadius: 11, backgroundColor: colors.green, alignItems: "center", justifyContent: "center", marginRight: 9 },
-  logoPhoto: { width: 21, height: 25, borderRadius: 4, backgroundColor: colors.white, overflow: "hidden", position: "relative" },
-  logoSun: { position: "absolute", width: 5, height: 5, top: 4, right: 4, borderRadius: 3, backgroundColor: colors.orange },
-  logoHillBack: { position: "absolute", width: 14, height: 9, left: 0, bottom: 0, borderTopRightRadius: 9, backgroundColor: "#a7b899", transform: [{ rotate: "-8deg" }] },
-  logoHillFront: { position: "absolute", width: 12, height: 7, right: -1, bottom: 0, borderTopLeftRadius: 8, backgroundColor: colors.green, transform: [{ rotate: "8deg" }] },
-  brand: { fontSize: 11, letterSpacing: 1.7, fontWeight: "700", color: colors.ink },
-  round: { marginLeft: "auto", fontSize: 9, letterSpacing: 1.2, color: colors.muted, fontWeight: "700" },
-  settingsIcon: { color: colors.green, fontSize: 18, marginLeft: 12 },
-  heroCopy: { marginBottom: 24 },
-  eyebrow: { color: colors.green, fontSize: 10, letterSpacing: 1.8, fontWeight: "700", marginBottom: 11 },
-  title: { color: colors.ink, fontSize: 39, lineHeight: 43, letterSpacing: -1.3, fontFamily: "Georgia", marginBottom: 12 },
-  body: { color: colors.muted, fontSize: 14, lineHeight: 21, marginBottom: 22, maxWidth: 390 },
-  previewCard: { backgroundColor: colors.white, borderRadius: 19, padding: 10, marginBottom: 21, borderWidth: 1, borderColor: colors.line },
-  previewImage: { height: 172, borderRadius: 12, overflow: "hidden", backgroundColor: "#d8dfcf", justifyContent: "flex-end", padding: 16 },
-  previewSun: { position: "absolute", right: 24, top: 16, color: "#f2be73", fontSize: 39 },
-  hillOne: { position: "absolute", height: 100, bottom: 0, left: -30, right: 110, borderTopRightRadius: 90, backgroundColor: "#93a88e", transform: [{ rotate: "-9deg" }] },
-  hillTwo: { position: "absolute", height: 80, bottom: -26, left: 65, right: -28, borderTopLeftRadius: 90, backgroundColor: "#617e68", transform: [{ rotate: "-8deg" }] },
-  previewCaption: { color: colors.white, fontSize: 12, fontWeight: "600", zIndex: 1 },
-  previewDetails: { flexDirection: "row", alignItems: "center", paddingHorizontal: 7, paddingTop: 14, paddingBottom: 5 },
-  miniLabel: { color: colors.muted, fontSize: 8, letterSpacing: 1.1, fontWeight: "700", marginBottom: 5 },
-  hiddenValue: { color: colors.ink, fontSize: 14, letterSpacing: 1.5 },
-  previewDivider: { height: 30, width: 1, backgroundColor: colors.line, marginHorizontal: 16 },
-  lock: { marginLeft: "auto", width: 29, height: 29, borderRadius: 15, backgroundColor: "#edf1e9", alignItems: "center", justifyContent: "center" },
-  lockText: { color: colors.green, fontSize: 14 },
-  featureRow: { flexDirection: "row", marginBottom: 14, alignItems: "flex-start" },
-  featureNumber: { color: colors.orange, fontSize: 10, fontWeight: "700", letterSpacing: 0.8, width: 33, paddingTop: 2 },
-  featureText: { color: colors.ink, fontSize: 12, lineHeight: 18, flex: 1 },
-  button: { backgroundColor: colors.green, minHeight: 55, borderRadius: 14, alignItems: "center", justifyContent: "center", marginTop: 12 },
-  buttonDisabled: { opacity: 0.45 },
-  buttonText: { color: "white", fontSize: 14, fontWeight: "700", letterSpacing: 0.25 },
-  footnote: { textAlign: "center", fontSize: 8, letterSpacing: 1.2, color: colors.muted, marginTop: 17 },
-  playerList: { marginTop: 8 },
-  playerInputRow: { flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderColor: colors.line },
-  playerIndex: { width: 43, color: colors.orange, fontWeight: "700", fontSize: 11 },
-  input: { height: 55, flex: 1, fontSize: 16, color: colors.ink },
-  addPlayer: { paddingVertical: 17 },
-  addText: { color: colors.green, fontWeight: "700", fontSize: 13 },
-  albumBox: { backgroundColor: colors.white, borderRadius: 13, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: colors.line, marginBottom: 12 },
-  albumHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  albumFilterRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 12 },
-  albumName: { color: colors.ink, fontSize: 13, fontWeight: "600" },
-  albumOption: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, borderTopWidth: 1, borderColor: colors.line },
-  albumSelect: { flex: 1 },
-  albumActions: { flexDirection: "row", alignItems: "center", gap: 12, marginLeft: 10 },
-  starText: { color: colors.orange, fontSize: 19 },
-  albumActionText: { color: colors.muted, fontSize: 9, fontWeight: "700" },
-  albumOptionName: { color: colors.ink, fontSize: 12 },
-  albumCount: { color: colors.muted, fontSize: 10, marginLeft: 8 },
-  permissionNote: { flexDirection: "row", padding: 14, backgroundColor: "#e9ede5", borderRadius: 13, marginTop: 9, marginBottom: 15 },
-  noteIcon: { color: colors.green, fontSize: 15, marginRight: 10, marginTop: 1 },
-  noteText: { flex: 1, color: colors.muted, fontSize: 11, lineHeight: 17 },
-  error: { color: "#a44833", fontSize: 12, lineHeight: 17, marginVertical: 8 },
-  spinner: { marginTop: 14 },
-  back: { alignItems: "center", padding: 17 },
-  backText: { color: colors.muted, fontSize: 12, fontWeight: "600" },
-  settingsCard: { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.line, borderRadius: 15, padding: 16, marginBottom: 18 },
-  settingRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 13, borderBottomWidth: 1, borderColor: colors.line },
-  photoActions: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", minHeight: 34 },
-  volumeControls: { flexDirection: "row", gap: 18 },
-  photoFrame: { height: 300, overflow: "hidden", borderRadius: 17, backgroundColor: "#e4e5de", marginVertical: 8, position: "relative" },
-  photo: { width: "100%", height: "100%" },
-  photoTag: { position: "absolute", left: 12, bottom: 12, backgroundColor: "rgba(30,43,37,0.82)", borderRadius: 7, paddingVertical: 7, paddingHorizontal: 9 },
-  photoTagText: { color: "white", fontSize: 8, letterSpacing: 1.1, fontWeight: "700" },
-  fieldLabel: { color: colors.muted, fontSize: 9, letterSpacing: 1.2, fontWeight: "700", marginTop: 14, marginBottom: 6 },
-  answerInput: { backgroundColor: colors.white, borderColor: colors.line, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, height: 49, color: colors.ink, fontSize: 14 },
-  dateHint: { color: "#a44833", fontSize: 10, marginTop: 5 },
-  turnCount: { color: colors.muted, textAlign: "center", fontSize: 8, letterSpacing: 1.2, marginTop: 18 },
-  answerCard: { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.line, borderRadius: 15, padding: 17, marginTop: 9, marginBottom: 22 },
-  answerTitle: { color: colors.ink, fontSize: 23, fontFamily: "Georgia", marginBottom: 14 },
-  answerPlace: { color: colors.ink, fontSize: 14, fontWeight: "600" },
-  hostHint: { color: colors.muted, fontSize: 10, lineHeight: 15, marginTop: 12 },
-  sectionLabel: { color: colors.muted, fontSize: 9, letterSpacing: 1.4, fontWeight: "700", marginBottom: 7 },
-  resultRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10, borderBottomWidth: 1, borderColor: colors.line },
-  resultInitial: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#e3e9df", alignItems: "center", justifyContent: "center", marginRight: 10 },
-  initialText: { color: colors.green, fontWeight: "700" },
-  resultInfo: { flex: 1 },
-  resultName: { color: colors.ink, fontSize: 12, fontWeight: "700" },
-  resultGuess: { color: colors.muted, fontSize: 10, marginTop: 3 },
-  scoreBreakdown: { color: colors.green, fontSize: 9, marginTop: 3, fontWeight: "600" },
-  judgeButton: { borderWidth: 1, borderColor: colors.line, borderRadius: 9, paddingHorizontal: 8, paddingVertical: 7 },
-  judgeSelected: { backgroundColor: "#e2ece0", borderColor: colors.green },
-  judgeText: { color: colors.muted, fontSize: 9, fontWeight: "700" },
-  judgeTextSelected: { color: colors.green },
-  scoreRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderBottomWidth: 1, borderColor: colors.line },
-  totalScore: { color: colors.green, fontSize: 14, fontWeight: "700" },
-  scoreNote: { color: colors.muted, fontSize: 10, lineHeight: 15, marginTop: 12, marginBottom: 7 },
-})

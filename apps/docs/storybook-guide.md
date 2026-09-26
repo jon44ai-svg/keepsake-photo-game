@@ -9,7 +9,7 @@ Two hosts share those files:
 | Web (`react-native-web`) | `pnpm storybook:web` | Browser UI review; static build under `/storybook/` on the docs site |
 | On-device (`@storybook/react-native`) | `pnpm storybook:android` | Real native views on emulator/device |
 
-Web stories are for presentational UI. Device Storybook is for verifying native look-and-feel; permissions, EXIF, ML Kit, haptics, and audio still need the real app smoke path.
+Screens and controls use mocked props in Storybook. Permissions, EXIF, ML Kit, haptics, and audio still need the real app smoke path.
 
 ## Web
 
@@ -28,6 +28,11 @@ pnpm storybook:android
 
 Sets `EXPO_PUBLIC_STORYBOOK_ENABLED=true` so Metro includes Storybook and the app entry mounts the on-device UI instead of the game.
 
-## Current stories
+## Stories
 
-- `Controls/GameButton` — default and disabled
+- Brand: LogoMark, BrandHeader
+- Controls: GameButton
+- Settings: SettingsPanel
+- Albums: AlbumOption
+- Screens: Home, Players, Guess, Reveal
+- Reveal: ResultRow

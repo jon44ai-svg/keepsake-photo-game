@@ -1,24 +1,32 @@
 # Components
 
-Most UI still lives in `apps/mobile/App.tsx` as screen coordinators (`home`, `players`, `guess`, `reveal`) plus small local helpers (`Button`, `LogoMark`).
+Presentational UI lives under `apps/mobile/src/components/`. `App.tsx` owns side effects (permissions, media, storage, haptics, audio) and passes props into these pieces.
 
-Reusable presentational pieces live under `apps/mobile/src/components/` and are the ones covered by Storybook.
+## Brand & controls
 
-## Extracted components
+| Component | Stories |
+|-----------|---------|
+| `LogoMark` | Brand/LogoMark |
+| `BrandHeader` | Brand/BrandHeader |
+| `GameButton` | Controls/GameButton |
 
-### `GameButton`
+## Settings & albums
 
-Primary action control used for game CTAs. Props: `title`, `onPress`, `disabled?`.
+| Component | Stories |
+|-----------|---------|
+| `SettingsPanel` | Settings/SettingsPanel |
+| `AlbumOption` | Albums/AlbumOption |
 
-Stories: [Controls/GameButton](/storybook/?path=/story/controls-gamebutton--default) (after `pnpm docs:build` or while `pnpm storybook:web` is running).
+## Screens
 
-## Screens (in `App.tsx`)
+Screens are Storybook-friendly with mocked data. Native APIs stay in `App`.
 
-| Screen | Purpose |
-|--------|---------|
-| `home` | Permissions, album pick, settings, start |
-| `players` | Player names before a round |
-| `guess` | Private date/place guesses; pass-the-phone |
-| `reveal` | Scores and truth; next round / restart |
+| Component | Stories |
+|-----------|---------|
+| `HomeScreen` | Screens/Home |
+| `PlayersScreen` | Screens/Players |
+| `GuessScreen` | Screens/Guess |
+| `RevealScreen` | Screens/Reveal |
+| `ResultRow` | Reveal/ResultRow |
 
-New presentational components should be extracted under `src/components/`, get a `*.stories.tsx`, and be listed here.
+Open the built Storybook at [/storybook/](/storybook/) after `pnpm docs:build`, or run `pnpm storybook:web`.
