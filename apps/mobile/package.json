@@ -11,6 +11,13 @@
     "storybook": "storybook dev -p 7007",
     "generate:themes": "node scripts/generate-themes.mjs"
   },
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": ["@react-native-ml-kit/face-detection"]
+      }
+    }
+  },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
     "@react-native-async-storage/async-storage": "^2.2.0",
