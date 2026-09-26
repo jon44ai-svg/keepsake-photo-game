@@ -27,11 +27,6 @@
     "@storybook/react-native": "^10.6.0",
     "@types/react": "~19.1.0",
     "typescript": "~5.9.2",
-    "vitest": "^3.2.4"
-  },
-  "pnpm": {
-    "overrides": {
-      "metro-cache": "0.83.7"
-    }
+    "vitest": "^3.2.7"
   }
 }
