@@ -3,7 +3,6 @@ import * as MediaLibrary from "expo-media-library"
 import { Audio } from "expo-av"
 import DateTimePicker from "@react-native-community/datetimepicker"
 import * as Haptics from "expo-haptics"
-import FaceDetection from "@react-native-ml-kit/face-detection"
 import { useEffect, useRef, useState } from "react"
 import {
   ActivityIndicator,
@@ -22,9 +21,10 @@ import {
 } from "react-native"
 import { PermissionsAndroid } from "react-native"
 import { dateFromExif } from "./src/domain/date"
-import { dateFromGuess, nextPhoto, scoreRound, type Photo as DomainPhoto, type Round } from "./src/domain/game"
+import { calendarDaysApart, dateFromGuess, nextPhoto, scoreRound, type Photo as DomainPhoto, type Round } from "./src/domain/game"
 import { defaultSettings, storage, type Settings } from "./src/storage"
 import { themes } from "./src/audio"
+import { detectFaces } from "./src/faceDetection"
 
 const themeAssets = {
   "piano-dawn": require("./assets/themes/piano-dawn.wav"),
@@ -242,8 +242,8 @@ export default function App() {
             if (date) datedPhotos++
             if (location) locatedPhotos++
             if (date && location && info.uri) {
-              const faces = await FaceDetection.detect(info.uri)
-              return { id: asset.id, uri: info.uri, date, latitude: location.latitude, longitude: location.longitude, hasFace: faces.length > 0 }
+              const faces = await detectFaces(info.uri)
+              return { id: asset.id, uri: info.uri, date, latitude: location.latitude, longitude: location.longitude, hasFace: faces > 0 }
             }
           } catch {
             metadataErrors++

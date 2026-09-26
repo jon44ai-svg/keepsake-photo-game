@@ -1,7 +1,7 @@
 import * as MediaLibrary from "expo-media-library"
-import FaceDetection from "@react-native-ml-kit/face-detection"
 import { dateFromExif } from "./domain/date"
 import type { Photo } from "./domain/game"
+import { detectFaces } from "./faceDetection"
 
 export type SelectedAlbum = Pick<MediaLibrary.Album, "id" | "title">
 
@@ -44,14 +44,14 @@ export async function scanAlbum(album: MediaLibrary.Album, onProgress?: (value: 
         const date = dateFromExif(exif.DateTimeOriginal ?? exif.DateTimeDigitized ?? exif.DateTime)
         const location = info.location
         if (!date || !location || !info.uri) return null
-        const faces = await FaceDetection.detect(info.uri)
+        const faces = await detectFaces(info.uri)
         return {
           id: asset.id,
           uri: info.uri,
           date,
           latitude: location.latitude,
           longitude: location.longitude,
-          hasFace: faces.length > 0,
+          hasFace: faces > 0,
         }
       } catch {
         return null

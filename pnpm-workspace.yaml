@@ -4,3 +4,9 @@ packages:
 allowBuilds:
   esbuild: true
   msw: false
+
+overrides:
+  postcss: ">=8.5.18"
+  browserslist: ">=4.28.7"
+  image-size: ">=2.0.3"
+  uuid: ">=11.1.1"

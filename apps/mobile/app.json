@@ -4,7 +4,8 @@
     "slug": "keepsake-photo-game",
     "version": "1.0.0",
     "platforms": [
-      "android"
+      "android",
+      "web"
     ],
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
