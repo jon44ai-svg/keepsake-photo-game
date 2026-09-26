@@ -3,22 +3,37 @@
     "name": "Keepsake Club",
     "slug": "keepsake-photo-game",
     "version": "1.0.0",
-    "platforms": ["android"],
+    "platforms": [
+      "android"
+    ],
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "android": {
       "package": "com.keepsake.photogame",
-      "permissions": ["android.permission.ACCESS_MEDIA_LOCATION"]
+      "permissions": [
+        "android.permission.ACCESS_MEDIA_LOCATION",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.READ_MEDIA_IMAGES"
+      ]
     },
     "plugins": [
       [
         "expo-media-library",
         {
           "photosPermission": "Keepsake Club uses your photos to build a private guessing game with friends.",
-          "granularPermissions": ["photo"],
+          "granularPermissions": [
+            "photo"
+          ],
           "isAccessMediaLocationEnabled": true
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "bb0efda3-d4cf-49c1-98b9-ed47eb0f6b0f"
+      }
+    }
   }
 }

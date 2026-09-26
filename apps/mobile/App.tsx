@@ -54,6 +54,18 @@ function Button({ title, onPress, disabled = false }: { title: string; onPress: 
   return <Pressable accessibilityRole="button" onPress={onPress} disabled={disabled} style={[styles.button, disabled && styles.buttonDisabled]}><Text style={styles.buttonText}>{title}</Text></Pressable>
 }
 
+function LogoMark() {
+  return (
+    <View accessible accessibilityLabel="Keepsake Club logo" style={styles.logoMark}>
+      <View style={styles.logoPhoto}>
+        <View style={styles.logoSun} />
+        <View style={styles.logoHillBack} />
+        <View style={styles.logoHillFront} />
+      </View>
+    </View>
+  )
+}
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>("home")
   const [players, setPlayers] = useState(["", ""])
@@ -99,7 +111,11 @@ export default function App() {
         return
       }
       if (Platform.OS === "android" && Number(Platform.Version) >= 29) {
-        await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION)
+        const locationPermission = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION)
+        if (locationPermission !== PermissionsAndroid.RESULTS.GRANTED) {
+          setMessage("Allow Keepsake Club to access photo locations in Android Settings, then try again.")
+          return
+        }
       }
       const albums = await MediaLibrary.getAlbumsAsync({ includeSmartAlbums: true })
       const cameraAlbum = albums.find((album) => /camera|dcim/i.test(album.title))
@@ -115,13 +131,18 @@ export default function App() {
         assets.push(...page.assets)
       }
       const candidates: Photo[] = []
+      let datedPhotos = 0
+      let locatedPhotos = 0
       for (let offset = 0; offset < assets.length; offset += 40) {
         const batch = await Promise.all(assets.slice(offset, offset + 40).map(async (asset) => {
           try {
             const info = await MediaLibrary.getAssetInfoAsync(asset, { shouldDownloadFromNetwork: false })
             const exif = (info.exif ?? {}) as Record<string, unknown>
-            const date = dateFromExif(exif.DateTimeOriginal ?? exif.DateTimeDigitized ?? exif.DateTime)
+            const exifDate = dateFromExif(exif.DateTimeOriginal ?? exif.DateTimeDigitized ?? exif.DateTime)
+            const date = exifDate ?? (asset.creationTime > 0 ? new Date(asset.creationTime) : null)
             const location = info.location
+            if (date) datedPhotos++
+            if (location) locatedPhotos++
             if (date && location && info.uri) return { uri: info.uri, date, latitude: location.latitude, longitude: location.longitude }
           } catch {
             // Ignore photos whose metadata cannot be read from the device.
@@ -136,7 +157,7 @@ export default function App() {
         return
       }
       if (!candidates.length) {
-        setMessage("No photos with both a capture date and GPS location were found. Try a larger camera library.")
+        setMessage(`No playable photos among ${assets.length} Camera photos: ${datedPhotos} have a date and ${locatedPhotos} have GPS. Camera location tagging may be off.`)
         return
       }
       setPhoto(candidates[Math.floor(Math.random() * candidates.length)])
@@ -193,7 +214,7 @@ export default function App() {
       <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
           <View style={styles.topline}>
-            <View style={styles.brandMark}><Text style={styles.brandIcon}>K</Text></View>
+            <LogoMark />
             <Text style={styles.brand}>KEEPSAKE CLUB</Text>
             <Text style={styles.round}>ROUND {String(round).padStart(2, "0")}</Text>
           </View>
@@ -277,8 +298,11 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   page: { width: "100%", maxWidth: 560, alignSelf: "center", paddingHorizontal: 25, paddingTop: 12, paddingBottom: 40 },
   topline: { height: 52, flexDirection: "row", alignItems: "center", marginBottom: 37 },
-  brandMark: { width: 30, height: 30, borderRadius: 10, backgroundColor: colors.green, alignItems: "center", justifyContent: "center", marginRight: 9 },
-  brandIcon: { color: colors.white, fontSize: 17, fontWeight: "700", fontFamily: "Georgia" },
+  logoMark: { width: 34, height: 34, borderRadius: 11, backgroundColor: colors.green, alignItems: "center", justifyContent: "center", marginRight: 9 },
+  logoPhoto: { width: 21, height: 25, borderRadius: 4, backgroundColor: colors.white, overflow: "hidden", position: "relative" },
+  logoSun: { position: "absolute", width: 5, height: 5, top: 4, right: 4, borderRadius: 3, backgroundColor: colors.orange },
+  logoHillBack: { position: "absolute", width: 14, height: 9, left: 0, bottom: 0, borderTopRightRadius: 9, backgroundColor: "#a7b899", transform: [{ rotate: "-8deg" }] },
+  logoHillFront: { position: "absolute", width: 12, height: 7, right: -1, bottom: 0, borderTopLeftRadius: 8, backgroundColor: colors.green, transform: [{ rotate: "8deg" }] },
   brand: { fontSize: 11, letterSpacing: 1.7, fontWeight: "700", color: colors.ink },
   round: { marginLeft: "auto", fontSize: 9, letterSpacing: 1.2, color: colors.muted, fontWeight: "700" },
   heroCopy: { marginBottom: 24 },

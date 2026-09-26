@@ -15,5 +15,5 @@ To build an installable APK with Expo's cloud builder, sign in to Expo first, th
 
 ```bash
 cd apps/mobile
-pnpm dlx eas-cli build --platform android --profile preview
+EAS_SKIP_AUTO_FINGERPRINT=1 pnpm dlx eas-cli build --platform android --profile preview
 ```
