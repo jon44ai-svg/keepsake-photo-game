@@ -5,6 +5,7 @@ const keys = {
   game: "keepsake.game",
   settings: "keepsake.settings",
   photoIndex: "keepsake.photo-index",
+  albumPreferences: "keepsake.album-preferences",
 } as const
 
 export type Settings = {
@@ -49,5 +50,7 @@ export const storage = {
   clearGame: () => AsyncStorage.removeItem(keys.game),
   saveAlbum: (album: unknown) => AsyncStorage.setItem(keys.album, JSON.stringify(album)),
   loadAlbum: <T>() => read<T | null>(keys.album, null),
+  loadAlbumPreferences: () => read(keys.albumPreferences, { favoriteIds: [] as string[], blacklistedIds: [] as string[] }),
+  saveAlbumPreferences: (preferences: { favoriteIds: string[]; blacklistedIds: string[] }) => AsyncStorage.setItem(keys.albumPreferences, JSON.stringify(preferences)),
   clearAll: () => AsyncStorage.multiRemove(Object.values(keys)),
 }

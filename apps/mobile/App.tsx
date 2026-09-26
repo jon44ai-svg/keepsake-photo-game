@@ -20,6 +20,7 @@ import {
 } from "react-native"
 import { PermissionsAndroid } from "react-native"
 import { dateFromExif } from "./src/domain/date"
+import { sortAlbums as sortAlbumList } from "./src/domain/albums"
 import { calendarDaysApart, dateFromGuess, nextPhoto, scoreRound, type Photo as DomainPhoto, type Round } from "./src/domain/game"
 import { defaultSettings, storage, type Settings } from "./src/storage"
 import { themes } from "./src/audio"
@@ -59,7 +60,11 @@ export default function App() {
   const [players, setPlayers] = useState(["", ""])
   const [selectedAlbum, setSelectedAlbum] = useState<SelectedAlbum | null>(null)
   const [photoAlbums, setPhotoAlbums] = useState<MediaLibrary.Album[]>([])
+  const [allPhotoAlbums, setAllPhotoAlbums] = useState<MediaLibrary.Album[]>([])
   const [showAlbumPicker, setShowAlbumPicker] = useState(false)
+  const [showBlacklistedAlbums, setShowBlacklistedAlbums] = useState(false)
+  const [favoriteAlbumIds, setFavoriteAlbumIds] = useState<string[]>([])
+  const [blacklistedAlbumIds, setBlacklistedAlbumIds] = useState<string[]>([])
   const [loadingAlbums, setLoadingAlbums] = useState(false)
   const [albumLoaded, setAlbumLoaded] = useState(false)
   const [photo, setPhoto] = useState<Photo | null>(null)
@@ -81,9 +86,11 @@ export default function App() {
   const [round, setRound] = useState(1)
 
   useEffect(() => {
-    Promise.all([storage.loadAlbum<SelectedAlbum>(), storage.loadSettings()]).then(([saved, savedSettings]) => {
+    Promise.all([storage.loadAlbum<SelectedAlbum>(), storage.loadSettings(), storage.loadAlbumPreferences()]).then(([saved, savedSettings, albumPreferences]) => {
       if (saved) setSelectedAlbum(saved)
       setSettings(savedSettings)
+      setFavoriteAlbumIds(albumPreferences.favoriteIds)
+      setBlacklistedAlbumIds(albumPreferences.blacklistedIds)
     }).catch(() => {}).finally(() => setAlbumLoaded(true))
   }, [])
 
@@ -91,6 +98,11 @@ export default function App() {
     if (!albumLoaded) return
     storage.saveSettings(settings).catch(() => {})
   }, [settings, albumLoaded])
+
+  useEffect(() => {
+    if (!albumLoaded) return
+    storage.saveAlbumPreferences({ favoriteIds: favoriteAlbumIds, blacklistedIds: blacklistedAlbumIds }).catch(() => {})
+  }, [favoriteAlbumIds, blacklistedAlbumIds, albumLoaded])
 
   useEffect(() => {
     if (!albumLoaded) return
@@ -147,13 +159,18 @@ export default function App() {
     return MediaLibrary.getAlbumsAsync({ includeSmartAlbums: true })
   }
 
+  function sortAlbums(albums: MediaLibrary.Album[], favorites = favoriteAlbumIds, blacklist = blacklistedAlbumIds) {
+    return sortAlbumList(albums, favorites, blacklist)
+  }
+
   async function openAlbumPicker() {
     setLoadingAlbums(true)
     setMessage("")
     try {
       const albums = await getPhotoAlbums()
       if (albums) {
-        setPhotoAlbums(albums.filter((album) => album.assetCount > 0))
+        setAllPhotoAlbums(albums.filter((album) => album.assetCount > 0))
+        setPhotoAlbums(sortAlbums(albums))
         setShowAlbumPicker(true)
       }
     } catch {
@@ -161,6 +178,34 @@ export default function App() {
     } finally {
       setLoadingAlbums(false)
     }
+  }
+
+  function toggleFavoriteAlbum(album: MediaLibrary.Album) {
+    setFavoriteAlbumIds((ids) => {
+      const next = ids.includes(album.id) ? ids.filter((id) => id !== album.id) : [...ids, album.id]
+      setPhotoAlbums((albums) => sortAlbums(albums, next))
+      return next
+    })
+  }
+
+  function toggleBlacklistedAlbum(album: MediaLibrary.Album) {
+    setBlacklistedAlbumIds((ids) => {
+      const next = ids.includes(album.id) ? ids.filter((id) => id !== album.id) : [...ids, album.id]
+      setPhotoAlbums((albums) => sortAlbums(albums, favoriteAlbumIds, next))
+      return next
+    })
+    if (selectedAlbum?.id === album.id) {
+      setSelectedAlbum(null)
+      storage.saveAlbum(null).catch(() => {})
+    }
+  }
+
+  function restoreAlbum(album: MediaLibrary.Album) {
+    setBlacklistedAlbumIds((ids) => {
+      const next = ids.filter((id) => id !== album.id)
+      setPhotoAlbums((albums) => albums.some((item) => item.id === album.id) ? sortAlbums(albums, favoriteAlbumIds, next) : sortAlbums([...albums, album], favoriteAlbumIds, next))
+      return next
+    })
   }
 
   async function chooseAlbum(album: MediaLibrary.Album) {
@@ -197,19 +242,27 @@ export default function App() {
       }
       const albums = await getPhotoAlbums()
       if (!albums) return
-      const defaultAlbum = albums.find((album) => album.title.trim().toLowerCase() === "camera")
-        ?? albums.find((album) => album.title.trim().toLowerCase() === "dcim")
-        ?? albums.find((album) => /^camera(?:\b|[_ -])/i.test(album.title))
-        ?? albums.find((album) => /dcim/i.test(album.title))
+      const availableAlbums = albums.filter((album) => !blacklistedAlbumIds.includes(album.id))
+      const defaultAlbum = availableAlbums.find((album) => album.title.trim().toLowerCase() === "camera")
+        ?? availableAlbums.find((album) => album.title.trim().toLowerCase() === "dcim")
+        ?? availableAlbums.find((album) => /^camera(?:\b|[_ -])/i.test(album.title))
+        ?? availableAlbums.find((album) => /dcim/i.test(album.title))
       const cameraAlbum = selectedAlbum ? albums.find((album) => album.id === selectedAlbum.id) : defaultAlbum
+      if (cameraAlbum && blacklistedAlbumIds.includes(cameraAlbum.id)) {
+        setSelectedAlbum(null)
+        setPhotoAlbums(sortAlbums(albums))
+        setShowAlbumPicker(true)
+        setMessage("Your saved album is blacklisted. Choose another photo album.")
+        return
+      }
       if (selectedAlbum && !cameraAlbum) {
-        setPhotoAlbums(albums.filter((album) => album.assetCount > 0))
+        setPhotoAlbums(sortAlbums(albums))
         setShowAlbumPicker(true)
         setMessage("Your saved album is no longer available. Choose another photo album.")
         return
       }
       if (!cameraAlbum) {
-        setPhotoAlbums(albums.filter((album) => album.assetCount > 0))
+        setPhotoAlbums(sortAlbums(albums))
         setShowAlbumPicker(true)
         setMessage("Choose a photo album to play.")
         return
@@ -372,7 +425,16 @@ export default function App() {
             <Pressable style={styles.addPlayer} onPress={() => setPlayers([...players, ""])}><Text style={styles.addText}>＋  Add another player</Text></Pressable>
             <View style={styles.albumBox}>
               <View style={styles.albumHeading}><View><Text style={styles.miniLabel}>PHOTO ALBUM</Text><Text style={styles.albumName}>{selectedAlbum?.title ?? "Camera (default)"}</Text></View><Pressable accessibilityRole="button" onPress={openAlbumPicker} disabled={loadingAlbums || !albumLoaded}><Text style={styles.addText}>{loadingAlbums ? "Loading…" : "Change"}</Text></Pressable></View>
-              {showAlbumPicker ? photoAlbums.map((album) => <Pressable accessibilityRole="button" key={album.id} onPress={() => chooseAlbum(album)} style={styles.albumOption}><Text style={styles.albumOptionName}>{album.title}</Text><Text style={styles.albumCount}>{album.assetCount} items {selectedAlbum?.id === album.id ? "· Selected" : ""}</Text></Pressable>) : null}
+              {showAlbumPicker ? <>
+                <View style={styles.albumFilterRow}>
+                  <Text style={styles.albumCount}>{showBlacklistedAlbums ? "BLACKLISTED ALBUMS" : `${photoAlbums.length} AVAILABLE ALBUMS`}</Text>
+                  <Pressable accessibilityRole="button" onPress={() => setShowBlacklistedAlbums(!showBlacklistedAlbums)}><Text style={styles.addText}>{showBlacklistedAlbums ? "Show available" : "View blacklisted"}</Text></Pressable>
+                </View>
+                {(showBlacklistedAlbums ? allPhotoAlbums.filter((album) => blacklistedAlbumIds.includes(album.id)) : photoAlbums).map((album) => <View key={album.id} style={styles.albumOption}>
+                  <Pressable accessibilityRole="button" disabled={showBlacklistedAlbums} onPress={() => chooseAlbum(album)} style={styles.albumSelect}><Text style={styles.albumOptionName}>{album.title}</Text><Text style={styles.albumCount}>{album.assetCount} items {selectedAlbum?.id === album.id ? "· Selected" : ""}</Text></Pressable>
+                  {showBlacklistedAlbums ? <Pressable accessibilityRole="button" accessibilityLabel={`Restore ${album.title}`} onPress={() => restoreAlbum(album)}><Text style={styles.addText}>Restore</Text></Pressable> : <View style={styles.albumActions}><Pressable accessibilityRole="button" accessibilityLabel={`${favoriteAlbumIds.includes(album.id) ? "Unstar" : "Star"} ${album.title}`} onPress={() => toggleFavoriteAlbum(album)}><Text style={styles.starText}>{favoriteAlbumIds.includes(album.id) ? "★" : "☆"}</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel={`Blacklist ${album.title}`} onPress={() => toggleBlacklistedAlbum(album)}><Text style={styles.albumActionText}>Hide</Text></Pressable></View>}
+                </View>)}
+              </> : null}
             </View>
             <View style={styles.permissionNote}><Text style={styles.noteIcon}>✳</Text><Text style={styles.noteText}>Keepsake scans photos on this phone and only uses pictures that have both a date and location. Nothing is uploaded.</Text></View>
             {message ? <Text style={styles.error}>{message}</Text> : null}
@@ -473,9 +535,14 @@ const styles = StyleSheet.create({
   addText: { color: colors.green, fontWeight: "700", fontSize: 13 },
   albumBox: { backgroundColor: colors.white, borderRadius: 13, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: colors.line, marginBottom: 12 },
   albumHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  albumFilterRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 12 },
   albumName: { color: colors.ink, fontSize: 13, fontWeight: "600" },
   albumOption: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, borderTopWidth: 1, borderColor: colors.line },
-  albumOptionName: { color: colors.ink, fontSize: 12, flex: 1 },
+  albumSelect: { flex: 1 },
+  albumActions: { flexDirection: "row", alignItems: "center", gap: 12, marginLeft: 10 },
+  starText: { color: colors.orange, fontSize: 19 },
+  albumActionText: { color: colors.muted, fontSize: 9, fontWeight: "700" },
+  albumOptionName: { color: colors.ink, fontSize: 12 },
   albumCount: { color: colors.muted, fontSize: 10, marginLeft: 8 },
   permissionNote: { flexDirection: "row", padding: 14, backgroundColor: "#e9ede5", borderRadius: 13, marginTop: 9, marginBottom: 15 },
   noteIcon: { color: colors.green, fontSize: 15, marginRight: 10, marginTop: 1 },
