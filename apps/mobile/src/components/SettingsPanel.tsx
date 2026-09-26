@@ -1,4 +1,5 @@
-import { Pressable, Text, View } from "react-native"
+import { useEffect, useState } from "react"
+import { Pressable, Text, TextInput, View } from "react-native"
 import type { Settings } from "../storage"
 import type { Theme } from "../audio"
 import { styles } from "./styles"
@@ -8,14 +9,30 @@ export function SettingsPanel({
   themes,
   onChange,
   onClearData,
+  onClearPhotoIndex,
   onClose,
 }: {
   settings: Settings
   themes: Theme[]
   onChange: (next: Settings) => void
   onClearData: () => void
+  onClearPhotoIndex: () => void
   onClose: () => void
 }) {
+  const [scanBatchDraft, setScanBatchDraft] = useState(String(settings.scanBatchSize))
+  useEffect(() => setScanBatchDraft(String(settings.scanBatchSize)), [settings.scanBatchSize])
+
+  function saveScanBatchSize() {
+    const parsed = Number.parseInt(scanBatchDraft, 10)
+    if (!Number.isFinite(parsed)) {
+      setScanBatchDraft(String(settings.scanBatchSize))
+      return
+    }
+    const size = Math.max(1, Math.min(500, parsed))
+    setScanBatchDraft(String(size))
+    onChange({ ...settings, scanBatchSize: size })
+  }
+
   return (
     <View style={styles.settingsCard}>
       <Text style={styles.eyebrow}>YOUR KEEPSAKE</Text>
@@ -55,6 +72,24 @@ export function SettingsPanel({
       <Pressable onPress={() => onChange({ ...settings, facesOnly: !settings.facesOnly })} style={styles.settingRow}>
         <Text style={styles.resultName}>Only photos with faces</Text>
         <Text style={styles.addText}>{settings.facesOnly ? "On" : "Off"}</Text>
+      </Pressable>
+      <Text style={styles.sectionLabel}>ADVANCED SCANNING</Text>
+      <View style={styles.settingRow}>
+        <Text style={[styles.resultName, { flex: 1 }]}>Photos checked at once (1–500)</Text>
+        <TextInput
+          accessibilityLabel="Photos checked at once"
+          keyboardType="number-pad"
+          onBlur={saveScanBatchSize}
+          onChangeText={setScanBatchDraft}
+          onSubmitEditing={saveScanBatchSize}
+          returnKeyType="done"
+          selectTextOnFocus
+          style={{ color: "#1e2b25", minWidth: 48, textAlign: "right" }}
+          value={scanBatchDraft}
+        />
+      </View>
+      <Pressable onPress={onClearPhotoIndex} style={styles.settingRow}>
+        <Text style={styles.resultName}>Rebuild photo index next round</Text>
       </Pressable>
       <Pressable onPress={onClearData} style={styles.settingRow}>
         <Text style={styles.error}>Clear saved data</Text>

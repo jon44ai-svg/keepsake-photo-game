@@ -6,7 +6,7 @@ import { SettingsPanel } from "./SettingsPanel"
 
 function Interactive(args: { settings: Settings }) {
   const [settings, setSettings] = useState(args.settings)
-  return <SettingsPanel settings={settings} themes={[...themes]} onChange={setSettings} onClearData={() => {}} onClose={() => {}} />
+  return <SettingsPanel settings={settings} themes={[...themes]} onChange={setSettings} onClearData={() => {}} onClearPhotoIndex={() => {}} onClose={() => {}} />
 }
 
 const meta = {
@@ -17,6 +17,7 @@ const meta = {
     themes: [...themes],
     onChange: () => {},
     onClearData: () => {},
+    onClearPhotoIndex: () => {},
     onClose: () => {},
   },
   render: (args) => <Interactive settings={args.settings} />,

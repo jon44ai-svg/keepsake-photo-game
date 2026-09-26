@@ -2,8 +2,9 @@ import { StatusBar } from "expo-status-bar"
 import * as MediaLibrary from "expo-media-library"
 import DateTimePicker from "@react-native-community/datetimepicker"
 import * as Haptics from "expo-haptics"
+import * as Clipboard from "expo-clipboard"
 import { useEffect, useRef, useState } from "react"
-import { Animated, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, useColorScheme } from "react-native"
+import { Alert, Animated, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, useColorScheme } from "react-native"
 import { PermissionsAndroid } from "react-native"
 import { dateFromExif } from "./src/domain/date"
 import { sortAlbums as sortAlbumList } from "./src/domain/albums"
@@ -252,13 +253,15 @@ export default function App() {
         setMessage("Choose a photo album to play.")
         return
       }
-      const cached = await storage.loadPhotoIndex<{ albumId: string; assetCount: number; photos: Array<Omit<Photo, "date"> & { date: string }> }>()
+      const cached = await storage.loadPhotoIndex<{ albumId: string; assetCount: number; facesScanned?: boolean; photos: Array<Omit<Photo, "date"> & { date: string }> }>()
       let candidates: Photo[] = []
-      const cacheMatchesAlbum = cached?.albumId === cameraAlbum.id && cached.assetCount === cameraAlbum.assetCount
+      const cacheMatchesAlbum = cached?.albumId === cameraAlbum.id && cached.assetCount === cameraAlbum.assetCount && (!settings.facesOnly || cached.facesScanned)
       if (cacheMatchesAlbum) {
         candidates = cached.photos.map((item) => ({ ...item, date: new Date(item.date) }))
         setMessage(`Using ${candidates.length} cached playable photos.`)
       } else {
+        const scanStarted = Date.now()
+        const pageStarted = Date.now()
         const assets: MediaLibrary.Asset[] = []
         let page = await MediaLibrary.getAssetsAsync({
           album: cameraAlbum,
@@ -277,12 +280,14 @@ export default function App() {
           })
           assets.push(...page.assets)
         }
+        const pageFetchMs = Date.now() - pageStarted
+        const metadataStarted = Date.now()
         let datedPhotos = 0
         let locatedPhotos = 0
         let metadataErrors = 0
-        for (let offset = 0; offset < assets.length; offset += 40) {
+        for (let offset = 0; offset < assets.length; offset += settings.scanBatchSize) {
           const batch = await Promise.all(
-            assets.slice(offset, offset + 40).map(async (asset) => {
+            assets.slice(offset, offset + settings.scanBatchSize).map(async (asset) => {
               try {
                 const info = await MediaLibrary.getAssetInfoAsync(asset, { shouldDownloadFromNetwork: false })
                 const exif = (info.exif ?? {}) as Record<string, unknown>
@@ -292,7 +297,7 @@ export default function App() {
                 if (date) datedPhotos++
                 if (location) locatedPhotos++
                 if (date && location && info.uri) {
-                  const faces = await detectFaces(info.uri)
+                  const faces = settings.facesOnly ? await detectFaces(info.uri) : 0
                   return { id: asset.id, uri: info.uri, date, latitude: location.latitude, longitude: location.longitude, hasFace: faces > 0 }
                 }
               } catch {
@@ -302,13 +307,14 @@ export default function App() {
             }),
           )
           candidates.push(...batch.filter((candidate): candidate is Photo => candidate !== null))
-          setMessage(`Checking camera photos… ${Math.min(offset + 40, assets.length)} of ${assets.length}`)
+          setMessage(`Checking camera photos… ${Math.min(offset + settings.scanBatchSize, assets.length)} of ${assets.length}`)
         }
         if (!assets.length) {
           setMessage(`Your "${cameraAlbum.title}" album is empty.`)
           return
         }
-        await storage.savePhotoIndex({ albumId: cameraAlbum.id, assetCount: cameraAlbum.assetCount, photos: candidates })
+        await storage.savePhotoIndex({ albumId: cameraAlbum.id, assetCount: cameraAlbum.assetCount, facesScanned: settings.facesOnly, photos: candidates })
+        console.info("Photo scan", { albumAssets: assets.length, playable: candidates.length, metadataErrors, pageFetchMs, metadataMs: Date.now() - metadataStarted, totalMs: Date.now() - scanStarted, batchSize: settings.scanBatchSize })
         if (!candidates.length) {
           setMessage(
             `No playable photos in "${cameraAlbum.title}": ${assets.length} scanned, ${datedPhotos} with a date, ${locatedPhotos} with GPS${metadataErrors ? `, ${metadataErrors} metadata reads failed` : ""}.`,
@@ -402,6 +408,7 @@ export default function App() {
                   setMessage("Saved data cleared.")
                 })
               }
+              onClearPhotoIndex={() => storage.clearPhotoIndex().then(() => setMessage("Photo index cleared. It will rebuild next round."))}
               onClose={() => setShowSettings(false)}
             />
           ) : null}
@@ -487,6 +494,14 @@ export default function App() {
               players={players}
               scores={scores}
               onTogglePlace={togglePlacePoint}
+              onCopyCoordinates={async () => {
+                try {
+                  await Clipboard.setStringAsync(`${photo.latitude}, ${photo.longitude}`)
+                  Alert.alert("Copied", "Coordinates copied to the clipboard.")
+                } catch {
+                  Alert.alert("Copy failed", "Could not copy the coordinates.")
+                }
+              }}
               onNextRound={finishRound}
               onFinish={() => {
                 finishRound()

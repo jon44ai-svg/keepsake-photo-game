@@ -15,6 +15,7 @@ export function RevealScreen({
   players,
   scores,
   onTogglePlace,
+  onCopyCoordinates,
   onNextRound,
   onFinish,
 }: {
@@ -25,6 +26,7 @@ export function RevealScreen({
   players: string[]
   scores: Record<string, number>
   onTogglePlace: (name: string) => void
+  onCopyCoordinates: () => void
   onNextRound: () => void
   onFinish: () => void
 }) {
@@ -40,6 +42,9 @@ export function RevealScreen({
         <Text style={styles.answerTitle}>{dateLabel}</Text>
         <Text style={styles.miniLabel}>SOMEWHERE AROUND</Text>
         <Text style={styles.answerPlace}>{coordinates(photo.latitude, photo.longitude)}</Text>
+        <Pressable accessibilityRole="button" onPress={onCopyCoordinates} style={styles.back}>
+          <Text style={styles.backText}>Copy coordinates</Text>
+        </Pressable>
         <Text style={styles.hostHint}>Ask the group: whose place guess was closest?</Text>
       </View>
       <Text style={styles.sectionLabel}>THE GUESSES</Text>

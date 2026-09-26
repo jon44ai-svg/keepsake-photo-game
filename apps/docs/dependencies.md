@@ -9,6 +9,7 @@ Main runtime packages in `apps/mobile` and why they exist:
 | `react-dom` / `react-native-web`            | Expo Web + web Storybook                                                       |
 | `@expo/metro-runtime`                       | Metro runtime for Expo                                                         |
 | `expo-media-library`                        | Album access and photo assets                                                  |
+| `expo-clipboard`                            | Copy photo coordinates                                                        |
 | `expo-status-bar`                           | Status bar styling                                                             |
 | `expo-haptics`                              | Vibration / haptic feedback on Android                                         |
 | `@react-native-async-storage/async-storage` | Local persistence (`src/storage.ts`)                                           |

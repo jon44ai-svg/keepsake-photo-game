@@ -25,6 +25,7 @@ const meta = {
     players: ["Sam", "Alex", "Jordan"],
     scores: { Sam: 2, Alex: 1, Jordan: 0 },
     onTogglePlace: noop,
+    onCopyCoordinates: noop,
     onNextRound: noop,
     onFinish: noop,
   },

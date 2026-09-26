@@ -16,7 +16,7 @@ Keepsake is local-first. The UI coordinates a small number of seams under `apps/
 ## Data flow
 
 1. Request photo access and Android media-location access.
-2. Scan the selected album locally in pages; filter metadata.
+2. Scan the selected album locally in pages; filter metadata in configurable batches. Cold scans log page-fetch, metadata, and total durations to the device console.
 3. Validated capture dates and GPS coordinates become the local photo index.
 4. A round selects several photos and persists the active game.
 5. Guesses stay in memory until reveal; scoring is deterministic.

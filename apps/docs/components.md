@@ -17,6 +17,9 @@ Presentational UI lives under `apps/mobile/src/components/`. `App.tsx` owns side
 | `SettingsPanel` | Settings/SettingsPanel |
 | `AlbumOption` | Albums/AlbumOption |
 
+Settings include advanced photo-scan batch sizing and photo-index invalidation.
+The reveal screen also provides a copy-coordinates action.
+
 ## Screens
 
 Screens are Storybook-friendly with mocked data. Native APIs stay in `App`.

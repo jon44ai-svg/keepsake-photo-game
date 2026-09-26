@@ -15,6 +15,7 @@ export type Settings = {
   musicTheme: "piano-dawn" | "guitar-road" | "piano-memory"
   vibration: boolean
   facesOnly: boolean
+  scanBatchSize: number
 }
 
 export const defaultSettings: Settings = {
@@ -24,6 +25,7 @@ export const defaultSettings: Settings = {
   musicTheme: "piano-dawn",
   vibration: true,
   facesOnly: false,
+  scanBatchSize: 40,
 }
 
 async function read<T>(key: string, fallback: T): Promise<T> {
@@ -47,6 +49,7 @@ export const storage = {
   saveGame: (game: unknown) => AsyncStorage.setItem(keys.game, JSON.stringify(game)),
   loadPhotoIndex: <T>() => read<T | null>(keys.photoIndex, null),
   savePhotoIndex: (photos: unknown) => AsyncStorage.setItem(keys.photoIndex, JSON.stringify(photos)),
+  clearPhotoIndex: () => AsyncStorage.removeItem(keys.photoIndex),
   clearGame: () => AsyncStorage.removeItem(keys.game),
   saveAlbum: (album: unknown) => AsyncStorage.setItem(keys.album, JSON.stringify(album)),
   loadAlbum: <T>() => read<T | null>(keys.album, null),
