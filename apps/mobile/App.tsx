@@ -1,6 +1,5 @@
 import { StatusBar } from "expo-status-bar"
 import * as MediaLibrary from "expo-media-library"
-import { AudioContext } from "react-native-audio-api"
 import DateTimePicker from "@react-native-community/datetimepicker"
 import * as Haptics from "expo-haptics"
 import { useEffect, useRef, useState } from "react"
@@ -24,6 +23,7 @@ import { dateFromExif } from "./src/domain/date"
 import { calendarDaysApart, dateFromGuess, nextPhoto, scoreRound, type Photo as DomainPhoto, type Round } from "./src/domain/game"
 import { defaultSettings, storage, type Settings } from "./src/storage"
 import { themes } from "./src/audio"
+import { setSoundtrackVolume, startSoundtrack, stopSoundtrack } from "./src/soundtrack/play"
 import { detectFaces } from "./src/faceDetection"
 
 type Photo = DomainPhoto
@@ -117,37 +117,14 @@ export default function App() {
   }, [photo, photoOpacity])
 
   useEffect(() => {
-    let context: AudioContext | null = null
-    let timer: ReturnType<typeof setInterval> | null = null
     if (!settings.music) return
-    try {
-      context = new AudioContext()
-      const theme = themes.find((item) => item.id === settings.musicTheme) ?? themes[0]
-      const playTheme = () => {
-        const start = context?.currentTime ?? 0
-        const notes = theme.intervals.map((interval) => theme.tonic + interval + theme.relative)
-        notes.forEach((note, index) => {
-          if (!context) return
-          const oscillator = context.createOscillator()
-          const gain = context.createGain()
-          oscillator.frequency.value = 440 * Math.pow(2, (note - 69) / 12)
-          gain.gain.value = settings.volume * 0.08
-          oscillator.connect(gain)
-          gain.connect(context.destination)
-          oscillator.start(start + index * 0.18)
-          oscillator.stop(start + index * 0.18 + 0.5)
-        })
-      }
-      playTheme()
-      timer = setInterval(playTheme, 3000)
-    } catch {
-      context = null
-    }
-    return () => {
-      if (timer) clearInterval(timer)
-      context?.close().catch(() => {})
-    }
-  }, [settings.music, settings.musicTheme, settings.volume])
+    startSoundtrack(settings.musicTheme, settings.volume)
+    return () => stopSoundtrack()
+  }, [settings.music, settings.musicTheme])
+
+  useEffect(() => {
+    if (settings.music) setSoundtrackVolume(settings.volume)
+  }, [settings.music, settings.volume])
 
   function beginSetup() {
     setPlayers(["", ""])
@@ -237,48 +214,59 @@ export default function App() {
         setMessage("Choose a photo album to play.")
         return
       }
-      const assets: MediaLibrary.Asset[] = []
-      let page = await MediaLibrary.getAssetsAsync({ album: cameraAlbum, mediaType: [MediaLibrary.MediaType.photo], first: 500, sortBy: [[MediaLibrary.SortBy.creationTime, false]] })
-      assets.push(...page.assets)
-      while (page.hasNextPage) {
-        page = await MediaLibrary.getAssetsAsync({ album: cameraAlbum, mediaType: [MediaLibrary.MediaType.photo], first: 500, after: page.endCursor, sortBy: [[MediaLibrary.SortBy.creationTime, false]] })
+      const cached = await storage.loadPhotoIndex<{ albumId: string; assetCount: number; photos: Array<Omit<Photo, "date"> & { date: string }> }>()
+      let candidates: Photo[] = []
+      const cacheMatchesAlbum = cached?.albumId === cameraAlbum.id && cached.assetCount === cameraAlbum.assetCount
+      if (cacheMatchesAlbum) {
+        candidates = cached.photos.map((item) => ({ ...item, date: new Date(item.date) }))
+        setMessage(`Using ${candidates.length} cached playable photos.`)
+      } else {
+        const assets: MediaLibrary.Asset[] = []
+        let page = await MediaLibrary.getAssetsAsync({ album: cameraAlbum, mediaType: [MediaLibrary.MediaType.photo], first: 500, sortBy: [[MediaLibrary.SortBy.creationTime, false]] })
         assets.push(...page.assets)
-      }
-      const candidates: Photo[] = []
-      let datedPhotos = 0
-      let locatedPhotos = 0
-      let metadataErrors = 0
-      for (let offset = 0; offset < assets.length; offset += 40) {
-        const batch = await Promise.all(assets.slice(offset, offset + 40).map(async (asset) => {
-          try {
-            const info = await MediaLibrary.getAssetInfoAsync(asset, { shouldDownloadFromNetwork: false })
-            const exif = (info.exif ?? {}) as Record<string, unknown>
-            const exifDate = dateFromExif(exif.DateTimeOriginal ?? exif.DateTimeDigitized ?? exif.DateTime)
-            const date = exifDate ?? (asset.creationTime > 0 ? new Date(asset.creationTime) : null)
-            const location = info.location
-            if (date) datedPhotos++
-            if (location) locatedPhotos++
-            if (date && location && info.uri) {
-              const faces = await detectFaces(info.uri)
-              return { id: asset.id, uri: info.uri, date, latitude: location.latitude, longitude: location.longitude, hasFace: faces > 0 }
+        while (page.hasNextPage) {
+          page = await MediaLibrary.getAssetsAsync({ album: cameraAlbum, mediaType: [MediaLibrary.MediaType.photo], first: 500, after: page.endCursor, sortBy: [[MediaLibrary.SortBy.creationTime, false]] })
+          assets.push(...page.assets)
+        }
+        let datedPhotos = 0
+        let locatedPhotos = 0
+        let metadataErrors = 0
+        for (let offset = 0; offset < assets.length; offset += 40) {
+          const batch = await Promise.all(assets.slice(offset, offset + 40).map(async (asset) => {
+            try {
+              const info = await MediaLibrary.getAssetInfoAsync(asset, { shouldDownloadFromNetwork: false })
+              const exif = (info.exif ?? {}) as Record<string, unknown>
+              const exifDate = dateFromExif(exif.DateTimeOriginal ?? exif.DateTimeDigitized ?? exif.DateTime)
+              const date = exifDate ?? (asset.creationTime > 0 ? new Date(asset.creationTime) : null)
+              const location = info.location
+              if (date) datedPhotos++
+              if (location) locatedPhotos++
+              if (date && location && info.uri) {
+                const faces = await detectFaces(info.uri)
+                return { id: asset.id, uri: info.uri, date, latitude: location.latitude, longitude: location.longitude, hasFace: faces > 0 }
+              }
+            } catch {
+              metadataErrors++
             }
-          } catch {
-            metadataErrors++
-          }
-          return null
-        }))
-        candidates.push(...batch.filter((candidate): candidate is Photo => candidate !== null))
-        setMessage(`Checking camera photos… ${Math.min(offset + 40, assets.length)} of ${assets.length}`)
-      }
-      if (!assets.length) {
-        setMessage(`Your "${cameraAlbum.title}" album is empty.`)
-        return
+            return null
+          }))
+          candidates.push(...batch.filter((candidate): candidate is Photo => candidate !== null))
+          setMessage(`Checking camera photos… ${Math.min(offset + 40, assets.length)} of ${assets.length}`)
+        }
+        if (!assets.length) {
+          setMessage(`Your "${cameraAlbum.title}" album is empty.`)
+          return
+        }
+        await storage.savePhotoIndex({ albumId: cameraAlbum.id, assetCount: cameraAlbum.assetCount, photos: candidates })
+        if (!candidates.length) {
+          setMessage(`No playable photos in "${cameraAlbum.title}": ${assets.length} scanned, ${datedPhotos} with a date, ${locatedPhotos} with GPS${metadataErrors ? `, ${metadataErrors} metadata reads failed` : ""}.`)
+          return
+        }
       }
       if (!candidates.length) {
-        setMessage(`No playable photos in "${cameraAlbum.title}": ${assets.length} scanned, ${datedPhotos} with a date, ${locatedPhotos} with GPS${metadataErrors ? `, ${metadataErrors} metadata reads failed` : ""}.`)
+        setMessage("No playable photos are available in this album.")
         return
       }
-      await storage.savePhotoIndex(candidates)
       const playable = settings.facesOnly ? candidates.filter((candidate) => candidate.hasFace) : candidates
       if (!playable.length) {
         setMessage("No photos with detected faces were found. Turn off the face-only filter or choose another album.")

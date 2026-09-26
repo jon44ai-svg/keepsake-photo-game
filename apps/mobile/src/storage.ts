@@ -28,7 +28,12 @@ export const defaultSettings: Settings = {
 async function read<T>(key: string, fallback: T): Promise<T> {
   try {
     const value = await AsyncStorage.getItem(key)
-    return value ? { ...fallback as object, ...JSON.parse(value) } as T : fallback
+    if (!value) return fallback
+    const parsed: unknown = JSON.parse(value)
+    if (fallback && typeof fallback === "object" && !Array.isArray(fallback) && parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return { ...fallback, ...parsed } as T
+    }
+    return parsed as T
   } catch {
     return fallback
   }
