@@ -5,3 +5,9 @@ dist/
 build/
 cool-animations/
 android/
+.vercel/
+apps/docs/public/storybook/
+apps/mobile/.storybook/storybook.requires.ts
+apps/mobile/.storybook/storybook.requires.js
+.vercel
+.env*

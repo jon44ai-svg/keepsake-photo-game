@@ -2,6 +2,13 @@
 
 - Treat this as an Android-first local-only prototype with roughly 100 hours of investment.
 - Prefer the smallest working change and reuse existing adapters and storage.
-- Record accepted, rejected, and deferred product decisions in `docs/decisions.md`.
 - Keep photo metadata on-device and never add cloud upload without an explicit decision.
 - Use pnpm for JavaScript package operations.
+
+## Docs and Storybook (required)
+
+- Canonical human docs live in `apps/docs` (VitePress). Deploy from that package with the Vercel CLI.
+- Product decisions go in `apps/docs/decisions.md` (not the root `docs/` stubs).
+- When changing architecture, public components, main dependencies, or the TS→Android build path: update the matching page under `apps/docs`.
+- When adding or changing a presentational component under `src/components/`: add/update a `*.stories.tsx` and mention it on `apps/docs/components.md` / `apps/docs/storybook-guide.md`.
+- Dual Storybook: on-device (`EXPO_PUBLIC_STORYBOOK_ENABLED`) and web (`.storybook-web`); share the same story files.

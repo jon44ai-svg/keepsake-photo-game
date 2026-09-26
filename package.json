@@ -6,7 +6,12 @@
     "dev": "pnpm --filter mobile start",
     "android": "pnpm --filter mobile android",
     "typecheck": "pnpm --filter mobile typecheck",
-    "count-lines": "node count-lines.mjs"
+    "count-lines": "node count-lines.mjs",
+    "docs": "pnpm --filter docs dev",
+    "docs:build": "pnpm --filter docs build",
+    "storybook": "pnpm --filter mobile storybook",
+    "storybook:web": "pnpm --filter mobile storybook:web",
+    "storybook:android": "pnpm --filter mobile storybook:android"
   },
   "devDependencies": {
     "prettier": "^3.9.6",

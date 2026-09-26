@@ -8,13 +8,17 @@
     "android": "expo run:android",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "storybook": "storybook dev -p 7007",
-    "generate:themes": "node scripts/generate-themes.mjs"
+    "storybook": "pnpm exec sb-rn-get-stories -c .storybook && EXPO_PUBLIC_STORYBOOK_ENABLED=true expo start",
+    "storybook:android": "pnpm exec sb-rn-get-stories -c .storybook && EXPO_PUBLIC_STORYBOOK_ENABLED=true expo start --android",
+    "storybook:web": "storybook dev -p 7007 -c .storybook-web",
+    "build-storybook": "storybook build -c .storybook-web -o ../docs/public/storybook"
   },
   "expo": {
     "doctor": {
       "reactNativeDirectoryCheck": {
-        "exclude": ["@react-native-ml-kit/face-detection"]
+        "exclude": [
+          "@react-native-ml-kit/face-detection"
+        ]
       }
     }
   },
@@ -33,13 +37,15 @@
     "react-native-audio-api": "^0.13.6",
     "react-native-reanimated": "~4.1.0",
     "react-native-safe-area-context": "~5.6.1",
-    "react-native-web": "^0.21.0",
-    "tone": "^15.1.22"
+    "react-native-web": "^0.21.0"
   },
   "devDependencies": {
     "@storybook/react-native": "^10.6.0",
+    "@storybook/react-native-web-vite": "^10.6.0",
     "@types/react": "~19.1.0",
+    "storybook": "^10.6.0",
     "typescript": "~5.9.2",
+    "vite": "^6.4.3",
     "vitest": "^4.1.11"
   }
 }

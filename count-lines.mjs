@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from "node:fs"
 import { extname, join } from "node:path"
 
 const sourceExtensions = new Set([".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts", ".css", ".html", ".java", ".kt"])
-const ignoredDirectories = new Set([".git", ".expo", ".turbo", "build", "coverage", "dist", "node_modules"])
+const ignoredDirectories = new Set([".git", ".expo", ".turbo", "build", "coverage", "dist", "node_modules", ".vercel", ".pnpm-store"])
 let total = 0
 
 function countLines(directory) {
