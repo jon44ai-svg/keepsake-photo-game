@@ -7,8 +7,9 @@ let total = 0
 
 function countLines(directory) {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (ignoredDirectories.has(entry.name)) continue
     const path = join(directory, entry.name)
-    if (entry.isDirectory() && !ignoredDirectories.has(entry.name)) countLines(path)
+    if (entry.isDirectory()) countLines(path)
     else if (entry.isFile() && sourceExtensions.has(extname(entry.name))) {
       const content = readFileSync(path, "utf8")
       if (content) total += (content.match(/\r\n|\r|\n/g)?.length ?? 0) + Number(!/[\r\n]$/.test(content))
